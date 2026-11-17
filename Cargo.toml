@@ -1,0 +1,25 @@
+[workspace]
+resolver = "3"
+exclude = ["reference"]
+members = [
+    "crates/analysant",
+    "crates/analysant-core",
+    "crates/analysant-lexical",
+    "crates/analysant-semantic",
+    "crates/analysant-pragmatic",
+    "crates/analysant-epistemic",
+    "crates/analysant-temporal",
+    "crates/analysant-logical",
+    "crates/analysant-deontic",
+    "crates/analysant-discourse",
+    "crates/analysant-ontological",
+    "crates/analysant-structural",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/ThinkersJournal/analysant"
+authors = ["Eric Evans"]
