@@ -697,6 +697,13 @@ Each is an `[ASK]` to the PM (recommended answer first).
 | D9 | Whether Gate A's "Fuel as data only" may include a Fuel `project.toml` kept in this repo, or must live in the Fuel repo | in this repo under `tests/fixtures/`, as it is test data | slice 1 |
 | D10 | Whether claim `kind` stays a single enum or becomes a set (a sentence can be a decision *and* a directive) | single, primary kind plus lens-private tags, until a Gate B case needs more | slice 2 |
 
+**PM rulings, decided 2026-11-17, PM** (D1 stays CireSnave's; the strawman is the recommendation):
+- D2: Gate B projects are KISS (docs-heavy), PersistAnt (Rust library) and HumboldtUnifiedKidTracker (Rust application, PRIVATE: local clone only, publish aggregate counts only). Do not reuse CodeRipper's sample repos.
+- D3: ledger committed, merged by union on unique event ids. D4: markdown adapter in core behind a feature. D5: MCP and editing tools are separate projects.
+- D6: no model until a Gate B names a noise class tables cannot fix. D7: `.analysant/` at repo root.
+- D8: `syn` for items; read CodeRipper MOD-011 reachability code (origin/main, pinned SHA) before slice 5 and say what is reused.
+- D9: fixtures live in this repo but the 4 MB reference/ corpus is not duplicated: fixtures point at `reference/pip-spike-2026-11-16/corpus`. D10: single primary kind plus lens-private tags.
+
 ## 9. Unverified list (everything I did not check)
 
 - The spike's test count and that its tests pass (5.1): not run.
