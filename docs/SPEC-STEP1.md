@@ -1,0 +1,712 @@
+# AnalysAnt: Step 1 specification (claim model, language-pack seam, base libraries, tool seam, acceptance)
+
+Status: **DRAFT for CireSnave's review, 2026-11-17. Design only; no crate code exists.** Author: the analysant lane.
+Inputs: `docs/REQUIREMENTS-2026-11-16.md`, `docs/IDEAS-AND-DECISIONS-2026-11-17.md`, and Pip's spike in
+`reference/pip-spike-2026-11-16/` (cited below as `spike/<path>:<line>`; every spike claim here was read at that line in this checkout).
+Anything I did not check is marked **UNVERIFIED**. Anything I recommend but CireSnave or the PM has not decided is marked **PROPOSAL**.
+Section 8 lists what I did not decide.
+
+## 0. Summary
+
+1. A **claim** is a stable-identity statement with a form, a pragmatic kind, a place in a section tree, typed relations, provenance and an
+   epistemic status. Identity is minted once and survives edits through a deterministic re-identification step plus a machine-owned
+   ledger; position (file:line) is a *locator*, never the identity (section 1).
+2. A **language is data plus a small adapter**. Two axes are kept apart: the *document format* (Markdown, TOML, source file) and the
+   *language* (English, Rust). The engine owns the model, the matching machinery, the search records and the controls; it hard-codes no
+   word list, no script rule, no heading syntax (section 2).
+3. `analysant-lexical` answers "which words, and do these words match": tokens, normal forms, lexicon lookup, a term index. `analysant-semantic`
+   answers "do these terms mean the same thing here": a concept store with alias and sense tables. Both are deterministic; each stage may
+   return **Undecided**, which is the only point where an optional, slow, local model may be consulted (section 3).
+4. Every lens is exposed to an LLM through one trait and one report shape. **Every finding carries what was searched and a positive
+   control**; an absence says what it looked in (section 4).
+5. Acceptance is three gates: the spike as golden oracle, a seeded precision sample across at least three other projects, and a
+   kill/continue rule for CireSnave to set (section 5). The smallest first slice is `analysant-core` plus `analysant-lexical`
+   reproducing the spike's narrow-corpus run v3 (section 6).
+
+## 1. The claim model (`analysant-core`)
+
+### 1.1 What the spike did, and what is wrong with it as a base
+
+`spike/src/claim.rs:42-57` is a six-field struct: `id` (`file:line`), `text`, `key`, `source_file`, `line`, `section` (a string joined with
+` > `, `spike/src/parse.rs:61-65`), `kind` and `role`. Three things it got right are kept: language-independence of the model
+(`claim.rs:1-7`), a normalized key separate from the raw text, and the section carried on the claim. Four things it could not carry are
+fixed here:
+
+- **Identity is position** (`claim.rs:44-45`, "file:line of first occurrence"). Insert a line above a claim and its identity changes, so
+  nothing can be superseded, annotated or tracked across an edit. Requirement 5 says "a claim has identity; text doesn't".
+- **`kind` and `role` are two enums for one question.** `ClaimKind::Directive` is assigned from the *shape* (a list item,
+  `spike/src/parse.rs:70-82`) and `PragmaticRole::Directive` from the *text* (`claim.rs:28-40`); a list item can be a Directive by kind and a
+  Description by role. Here **form** (how it appears) and **kind** (what it does) are separate fields with separate owners.
+- **A section is a string.** Requirement 2 needs a section to be an addressable unit, so a section is a node with its own identity.
+- **No relations, provenance or status.** The spike pairs statements ad hoc (`spike/src/contradiction.rs:110-139`) and never stores a
+  relation.
+
+### 1.2 The unit tree
+
+A corpus is a set of **documents**; a document is a tree of **units**. Units are what edits address (requirement 2) and what claims sit in.
+
+```rust
+/// Identifies a unit across revisions. Opaque: 128 bits rendered as base32. Minted once, never reused.
+pub struct UnitId(/* private */);
+
+pub enum UnitKind { Document, Section, Block, Claim }
+
+pub struct Unit {
+    pub id: UnitId,
+    pub kind: UnitKind,
+    pub parent: Option<UnitId>,
+    pub ordinal: u32,               // position among siblings; a locator, not identity
+    pub heading: Option<String>,    // for Section
+    pub span: Span,                 // byte range + line range in the source revision
+    pub source: SourceRef,          // see 1.6
+}
+```
+
+`Claim` is a `Unit` with a `ClaimBody`; a section keeps the claims below it as children, so "replace a subsection" (requirement 2) is
+"replace the children of one `Section` unit", which is mechanical and cannot reach a sibling.
+
+### 1.3 The claim
+
+```rust
+pub struct Claim {
+    pub unit: Unit,                 // identity, parent section, span, source
+    pub revision: Revision,         // 1.4: which revision of this claim's text this is
+    pub text: String,               // as written
+    pub form: Form,                 // how it appears (structural; set by the format adapter / language pack)
+    pub kind: Kind,                 // what it does (pragmatic; Unclassified until the pragmatic lens runs)
+    pub normal: NormalForm,         // from analysant-lexical (tokens, key); never part of identity
+    pub status: EpistemicStatus,    // Unassessed until the epistemic lens runs
+    pub provenance: Provenance,     // 1.6
+}
+
+#[non_exhaustive]
+pub enum Form {
+    Sentence, ListItem, TableRow, TableCell, Heading, Question,
+    CodeItem(CodeItemKind),         // the Rust pack: fn, struct, enum, trait, test, const, ...
+    Other(String),
+}
+
+#[non_exhaustive]
+pub enum Kind {                     // speech acts; the pragmatic lens assigns, the base libraries never do
+    Unclassified,
+    Directive,                      // "build the multi-path DAG"
+    Assertion,                      // "the plan IS the graph"
+    Question,
+    Decision,                       // includes the outcome: adopted / rejected / declined
+    Definition,
+    Proposal,
+    Report,                         // as-built, dated, retired (the spike's StatusNote, spike/src/claim.rs:36-37)
+    Name,                           // a naming act, not a sentence (spike's Name, claim.rs:38-39)
+    Description,
+}
+
+#[non_exhaustive]
+pub enum EpistemicStatus {          // a status, not a meaning; the epistemic lens assigns
+    Unassessed,
+    Verified { basis: Evidence },
+    Asserted,
+    Requested,                      // a directive nobody confirmed: the DAG failure's status
+    Assumed,
+    Disputed { by: Vec<ClaimRef> },
+    Superseded { by: ClaimRef },
+}
+```
+
+The enums are `#[non_exhaustive]` because later lenses will add values; core ships the *vocabulary*, the lens libraries own the
+*assignment*. Core never classifies a claim: a claim extracted by core alone has `kind: Unclassified` and `status: Unassessed`.
+
+### 1.4 Identity that survives edits (PROPOSAL)
+
+The mechanism, in the order it is tried. Everything is deterministic and explains itself (the same standard as the spike's "the rule that
+fired is the reason", `spike/src/pragmatic.rs:9-12`).
+
+1. **Mint.** The first time a claim is seen it gets a fresh `UnitId`, recorded in the **ledger** (1.5) with its document, section path,
+   normalized text hash and revision 1.
+2. **Re-identify on every re-extraction.** The new extraction is aligned to the ledger's last state for that document:
+   a. *Exact*: same normalized text under the same section lineage gives the same id (a moved paragraph keeps its identity);
+   b. *Edited in place*: same section lineage, same ordinal neighbourhood and token-set similarity at or above a pack-configured threshold
+      gives the same id and `revision + 1`, with the old text kept in the ledger;
+   c. *Otherwise* a new id; an old id with no match is marked `Gone`, never silently dropped.
+   Ties are not resolved by guessing: an ambiguous alignment is reported as a finding (`identity:ambiguous`) and both candidates keep
+   their old ids until a human or an explicit edit operation decides.
+3. **Edits by the tools are exact.** A tool edit (1.8) names the claim id and the revision it expects; the ledger records old and new text
+   at the moment of the edit, so tool-made edits never need step 2.
+
+**Revision versus supersession.** A *revision* is the same proposition, reworded: same id, `revision + 1`. A *supersession* is a different
+proposition that replaces one: new id, and a `Supersedes` relation (1.5). A deterministic rule cannot tell these apart in general, so the
+line is drawn by who asks: an edit operation says which it is (1.8); a lens that infers supersession only *proposes* it (a finding), and the
+relation becomes fact when accepted.
+
+### 1.5 Relations and "supersedes"
+
+```rust
+pub struct Relation {
+    pub from: ClaimRef, pub to: ClaimRef,
+    pub kind: RelationKind,
+    pub by: Derivation,             // which rule or edit created it (never empty)
+    pub state: RelationState,       // Asserted (by the document or an edit) | Proposed (by a lens) | Accepted | Rejected
+}
+
+#[non_exhaustive]
+pub enum RelationKind {
+    Supersedes,                     // from replaces to
+    Contradicts,                    // logical lens
+    Implements, Tests, Missing,     // doc claim -> code claim; Missing is the DAG case
+    Elaborates, Supports, Attacks, Justifies, Concedes,   // discourse lens
+    Owns,                           // a plan row owns a note (spike/src/ownership.rs:1-28)
+    Cites, Duplicates, Refines,
+    Other(String),                  // namespaced "lens:name" for lens-private relations
+}
+```
+
+**`Supersedes(B -> A)` means:** A is retained, readable and addressable, but is **not current**. Concretely: (a) default queries and
+discrepancy checks run over the *current view* (claims with no accepted `Supersedes` pointing at them), so a stale version stops winning
+the search, which is the failure in the problem statement; (b) A's `status` becomes `Superseded { by: B }`; (c) supersession is transitive
+through chains and a cycle is an error; (d) the old text is never deleted from the ledger, so "recoverable" holds without the document
+having to carry its own history, which is what ends the append-only habit. A document that says "superseded by X" in prose
+yields an `Asserted` relation only when the pack's lexicon and the reference resolve to a claim; otherwise it is a `Proposed` relation.
+
+### 1.6 Provenance
+
+```rust
+pub struct SourceRef { pub repo: Option<String>, pub path: String, pub rev: Option<String> /* commit sha */, pub span: Span }
+
+pub struct Provenance {
+    pub source: SourceRef,
+    pub extracted_by: ExtractorId,  // format adapter + language pack, each with name and version
+    pub extracted_at: Timestamp,
+    pub asserted_at: Option<Timestamp>,   // when the document says it, if derivable (a date in the text; git blame)
+    pub author: Option<String>,           // only when derivable; never guessed
+}
+
+pub struct Derivation { pub lens: LensId, pub rule: String /* the rule that fired */, pub table_entries: Vec<TableEntryRef> }
+```
+
+`asserted_at` is the temporal lens's raw material. Core only carries it. The spike detects dates with a hand-written `YYYY-MM-DD`
+window (`spike/src/pragmatic.rs:182-196`); here the date grammar is language-pack data.
+
+### 1.7 Addressing
+
+Two forms, never confused:
+
+- **Stable reference** `ClaimRef { id: UnitId, rev: Option<Revision> }`, textual `an:<id>[@<rev>]`. This is what relations, findings and edit
+  operations hold. With `rev` it names an exact text; without it, "this claim, whichever revision is current".
+- **Locator** `Locator { doc, section_path: Vec<SectionRef>, ordinal, span }`, textual `<doc>#<slug>/<slug>/¶<n>`. For people and for
+  diffs. It breaks when the document is restructured, by design; a stable reference does not.
+
+A **section is addressable as a unit** (`an:<section-id>`), so the edit "replace the content of section S" carries S's id and a
+precondition (1.8), not a line range.
+
+### 1.8 Edit operations (defined now, built last)
+
+Requirement note: "Edit operations themselves can be defined early as part of the model; the rewriting tools come last." Only the types:
+
+```rust
+pub enum EditOp {
+    InsertAfter   { anchor: ClaimRef, text: String },                    // cannot clobber: adds a unit, touches nothing else
+    ReplaceClaim  { target: ClaimRef, expect_rev: Revision, text: String, mode: ReviseOrSupersede },
+    ReplaceSection{ target: UnitId,   expect_digest: Digest, children: Vec<NewClaim> },
+    Retire        { target: ClaimRef, expect_rev: Revision, reason: String },   // marks Gone/Superseded; text stays in the ledger
+}
+pub struct EditPlan { pub ops: Vec<EditOp>, pub base: SourceRef /* the revision the plan was made against */ }
+```
+
+Every mutating op carries an **expectation** (`expect_rev`, `expect_digest`): if the target changed since the plan was made, the op is
+refused, not merged. Requirement 4 (side by side) is `render_diff(EditPlan) -> SideBySide` built from the plan and the ledger; whether a
+human or a model accepts it is a policy outside the library. No op is ever applied by an analysis crate.
+
+### 1.9 The ledger
+
+Identity needs memory. The **ledger** is a file in the analysed project (PROPOSAL: `.analysant/ledger.jsonl`), owned and written only by
+AnalysAnt tools, one JSON record per unit event (minted, revised, moved, gone, relation changed). It is the one place where append-only is
+correct, because a machine writes it and nothing reads it by grep. Whether it is committed to the project, and how two branches merge it,
+is open (section 8, D3).
+
+## 2. The language-pack seam
+
+### 2.1 Two axes, not one
+
+The spike's `parse.rs` is a Markdown parser with English assumptions inside it: a list of English conjunctions and prepositions
+(`spike/src/parse.rs:351-353`), `", "`/`"; "`/`". "` as sentence punctuation (`parse.rs:338`), a stopword list (`spike/src/normalize.rs:49-52`).
+Markdown is a *document format*; English is a *language*; neither belongs to the engine. So:
+
+| axis | trait | supplies | examples |
+|---|---|---|---|
+| document format | `FormatAdapter` | the unit tree (documents, sections, blocks) and the text/code spans inside it, with the language each span is in | Markdown, plain text, TOML comments; a `.rs` file |
+| language | `LanguagePack` | everything about reading the text of a span | English; Rust |
+
+A fenced code block in a Markdown document is handed to the pack for its language (the spike skips fences and says why:
+`spike/src/parse.rs:9`, "code is a different language and gets its own parser"). A Rust source file is a "document" whose format adapter is
+the Rust parser and whose spans are Rust.
+
+### 2.2 What a pack supplies
+
+```rust
+pub trait LanguagePack: Send + Sync {
+    fn id(&self) -> PackId;                         // "en", "rust"; carries a semantic version
+    fn script_kind(&self) -> LanguageKind;          // Natural | Formal
+    fn tokenize(&self, span: &Span, text: &str) -> Vec<Token>;
+    fn sentences(&self, text: &str) -> Vec<Range<usize>>;          // natural: rules are DATA; formal: items, not sentences
+    fn normalizer(&self) -> &dyn Normalizer;        // case folding, lemma/stem table, identifier splitting, stopword set
+    fn lexicons(&self) -> &LexiconSet;              // data (2.3)
+    fn extract(&self, unit: &Unit, text: &str) -> Vec<RawClaim>;   // form + text + span; NEVER sets Kind or status
+}
+
+/// Formal languages additionally expose artifacts and references, so doc claims can be checked against them.
+pub trait FormalPack: LanguagePack {
+    fn artifacts(&self, src: &SourceFile) -> Vec<Artifact>;        // fn, type, trait, test, const; qualified name, signature, visibility, cfg
+    fn references(&self, src: &SourceFile) -> Vec<Reference>;      // calls, uses, re-exports: the edges a call-graph lens needs
+}
+```
+
+The `en` pack's `extract` implements the *structural* shapes only (a list item, a table row's first cell, a sentence); deciding that a
+list item is a directive is the pragmatic lens (later). The spike did both in one function (`spike/src/parse.rs:70-82`).
+
+### 2.3 What is data
+
+All of these live in versioned data files with the schema in 3.5, never in Rust source:
+
+- tokenizer parameters (word-boundary classes, script rules, abbreviation list for sentence splitting);
+- stopwords, imperative verbs (`spike/src/pragmatic.rs:202-`), status markers (`pragmatic.rs:74-90`), outcome markers (`pragmatic.rs:109`),
+  negation phrases (`spike/src/contradiction.rs:374-`), temporal phrases (`contradiction.rs:346-`), "bad words" that make a negation
+  positive (`contradiction.rs:262-`), modal verbs, hedges, discourse markers, date grammar;
+- normalizer tables (lemma/stem, case-folding exceptions);
+- alias tables and sense tables (3.4).
+
+Why data: Eric's constraint is that a language is a pack and the engine is generic (requirements, "Scope: English versus Rust"); and data can
+carry provenance, examples and a maintenance record, which a `const &[&str]` in source cannot (the spike's own comment at
+`spike/src/pragmatic.rs:11-13` says it "rots like any data" and offers no remedy).
+
+### 2.4 What the engine owns (and packs may not)
+
+The unit tree, claim, relation, ledger and finding types; the matching *modes* (3.2); the term index; orchestration across documents;
+search records and controls (4.2); scoring, sampling and reporting. A pack plugs in *behaviour that varies by language*; it never owns
+the shape of a result.
+
+### 2.5 What may NOT be hard-coded in an engine crate (mechanically checked)
+
+1. A word list of any language (including `"the" | "a" | "an"`, `spike/src/normalize.rs:20`).
+2. A character-class assumption about words (`is_alphanumeric` as the token rule, `normalize.rs:13`, is English-shaped; CJK has no spaces).
+3. Case folding by `to_lowercase()` (`normalize.rs:10`) without a pack hook (Turkish dotless i).
+4. A heading, list or table syntax: those belong to a `FormatAdapter`.
+5. A project's vocabulary: `"fuel"` is in the spike's pairing stopwords (`spike/src/contradiction.rs:636`), a ROADMAP row is `N. **`
+   (`spike/src/ownership.rs:18-19`, `101-115`), and a note cites a row as `design-notes/<file>` (`ownership.rs:58`). All are *configuration*
+   of a project (`.analysant/project.toml`: plan-row pattern, note-citation pattern, project stopwords), not engine code.
+6. A verdict vocabulary: BUILT/STUB/ABSENT is Fuel's audit's vocabulary mapped onto the spike's lens (`spike/src/rust_code.rs:39-49`); the
+   engine's vocabulary for doc-vs-code is `Relation { Implements, Tests, Missing }` with evidence, and reports map it (see 5.1, "verdict
+   vocabulary").
+
+**Mechanical check (acceptance, 5.1):** a test greps every `src/` file of every engine crate for a deny-list (`fuel`, project names, the words in
+2.3's lexicon files) and fails on any hit. Its positive control is the same grep over the test fixtures, which must hit.
+
+### 2.6 How English and Rust both fit
+
+| seam point | English pack | Rust pack |
+|---|---|---|
+| format adapter | Markdown | the `.rs` file; Markdown doc comments are handed back to English |
+| tokenizer | word/number/identifier-in-prose tokens from pack data | lexer tokens |
+| sentence rules | abbreviation-aware, from data | none: an item is the unit |
+| normalizer | lowercase, lemma table, drop leading article | `split_ident_words`: `pick_route` -> [pick, route], `RuleRegistry` -> [rule, registry] (the spike's rule, `spike/src/rust_code.rs:145-149`, reused as an idea) |
+| claims | sentences, list items, table rows, headings, questions | items: signature, visibility, type, `#[test]` fns, cfg conditions, doc comment |
+| lexicons | hedges, modals, negation, status, discourse | `test`, `deprecated`, `unsafe`, visibility words, `cfg` predicates as qualifiers |
+| ground-truth role | the claims being checked | the artifacts checked against (code cannot lie about existence) |
+
+**Rust pack implementation.** The spike's hand-rolled scanner is not reused (it names its own gaps: no parser, no call graph, no macro
+expansion, no cfg evaluation beyond `cfg(test)`, bare-name conflation, `spike/src/rust_code.rs:8-37`; sizes in
+`spike-report-2026-11-16.md:475-480`). PROPOSAL: `syn` for items and signatures, as CodeRipper's detector does
+(`C:\Projects\coderipper\docs\superpowers\plans\2026-10-24-performance-rules-precision.md:10`, a throwaway `syn` visitor); reachability
+("is it wired in") asks the compiler instead of a name scan, reusing CodeRipper's MOD-011 approach (named in
+`docs/IDEAS-AND-DECISIONS-2026-11-17.md:66-67`; **I have not read MOD-011**, UNVERIFIED). The Rust pack is **not** in the first slice
+(section 6); the seam is specified now so the first slice does not paint it out.
+
+## 3. The two base libraries
+
+### 3.1 Division of labour
+
+| | `analysant-lexical` | `analysant-semantic` |
+|---|---|---|
+| question | what are the words, and do these words match | do these terms mean the same here |
+| owns | tokens, normal forms, lexicon lookup, matching modes, the term index | the concept store, alias table, sense table, term relations |
+| unit of data | `Token`, `NormalForm`, `LexiconHit` | `Concept`, `Sense`, `Resolution` |
+| knows documents? | no: text in, hits out | the corpus's scope layering (project, document) |
+| ML | none; one declared escalation hook for unsegmented scripts (3.3) | the escalation point for paraphrase (3.3) |
+
+Both depend only on `analysant-core` and each other in that direction (`semantic` depends on `lexical`).
+
+### 3.2 `analysant-lexical`: public API sketch (types and signatures, no bodies)
+
+```rust
+pub struct Token { pub text: String, pub span: Range<usize>, pub norm: String, pub class: TokenClass }
+pub enum TokenClass { Word, Number, Identifier, Punct, Date, Other }
+
+pub struct NormalForm { pub tokens: Vec<Token>, pub key: String, pub content: Vec<String> /* stopwords removed */ }
+
+pub fn tokenize(pack: &dyn LanguagePack, text: &str) -> Vec<Token>;
+pub fn normalize(pack: &dyn LanguagePack, text: &str) -> NormalForm;
+
+/// Matching modes the spike used, named so a finding can say which one fired.
+pub enum MatchMode {
+    Sequence,       // contiguous token run         (spike/src/normalize.rs:62-74)
+    TokenSubset,    // every key token present, any order (normalize.rs:31-44; the spike's directed-but-untasked check, check.rs:48-51)
+    Family,         // morphological family: shared long prefix (spike/src/contradiction.rs:422)
+}
+pub struct MatchEvidence { pub mode: MatchMode, pub matched: Vec<Range<usize>>, pub rule: &'static str }
+pub fn matches(hay: &NormalForm, needle: &NormalForm, mode: MatchMode) -> Option<MatchEvidence>;
+
+/// Word-boundary phrase lookup against a lexicon (never substring: "shall" must not hit "shallow", spike/src/pragmatic.rs:158-162).
+pub struct LexiconHit { pub lexicon: LexiconId, pub entry: EntryId, pub span: Range<usize> }
+pub fn lookup(set: &LexiconSet, lexicon: &str, text: &NormalForm) -> Vec<LexiconHit>;
+
+/// Cross-document index: normalized token -> claim ids. Replaces the spike's O(claims x lines) scan (spike/src/check.rs:48-51).
+pub struct TermIndex { /* private */ }
+impl TermIndex {
+    pub fn build(claims: &[Claim]) -> Self;
+    pub fn query(&self, key: &NormalForm, mode: MatchMode) -> QueryResult;   // carries the SearchRecord (4.2)
+}
+```
+
+`Family` carries the spike's own stated limits (roots under 6 letters with a consonant mutation do not meet,
+`spike/src/contradiction.rs:73-79`); the limit is part of the mode's documentation, not hidden.
+
+### 3.3 Deterministic parts and the ML escalation point
+
+Every decision in both crates returns a three-valued result:
+
+```rust
+pub enum Decision<T> { Yes(T, Evidence), No(Evidence), Undecided(Reason) }
+```
+
+- **Deterministic by contract:** tokenizing (for spaced scripts), normalizing, lexicon lookup, the three match modes, the term index, alias
+  canonicalization, sense selection from cues, term relations from tables.
+- **The escalation point is exactly `Undecided`.** A deterministic stage that cannot decide says why (no sense matched; two senses tie;
+  no alias group; token overlap below threshold). An optional `Escalator` may then be consulted:
+
+  ```rust
+  pub trait Escalator { fn decide(&self, q: &Question) -> Decision<Verdict>; fn identity(&self) -> ModelId; }
+  ```
+
+  Rules for it: **off by default**; slow and batch (the requirements' constraint); local and small; the call, its prompt/input hash and the
+  model id are recorded in the finding's `Derivation`; a finding whose truth rests on an escalated verdict is **marked as model-judged**
+  and is never counted in the deterministic precision figure (5.2). Candidates the spike's own report names for the fuzzy tail:
+  paraphrase-level contradiction, atomic-fact decomposition, implicit discourse relations (`docs/REQUIREMENTS-2026-11-16.md:71`).
+  Unsegmented scripts (CJK) need a data-driven segmenter; that is the one lexical escalation point and a Natural-pack concern.
+- Which model, and its resource ceiling, is **not decided** (section 8, D6).
+
+### 3.4 `analysant-semantic`: public API sketch
+
+```rust
+pub struct Concept { pub id: ConceptId, pub canonical: String, pub forms: Vec<Form>, pub senses: Vec<Sense>, pub scope: Scope, pub meta: EntryMeta }
+pub struct Sense  { pub id: SenseId, pub gloss: String, pub cues: Vec<Cue>, pub excludes: Vec<Cue> }   // cue: co-occurring term, section pattern, document glob
+
+pub struct ConceptStore { /* layered: language pack < portfolio < project < document */ }
+impl ConceptStore {
+    pub fn load(layers: &[LayerSource]) -> Result<Self, TableError>;
+    pub fn resolve(&self, term: &NormalForm, ctx: &Context) -> Resolution;     // Concept(+sense) | Ambiguous(Vec<Sense>) | Unknown
+    pub fn canonicalize(&self, text: &NormalForm, ctx: &Context) -> NormalForm; // generalizes the spike's canonicalize (spike/src/normalize.rs:111-143)
+}
+
+pub enum TermRelation { Same, Broader, Narrower, Related, Unrelated }
+pub fn relate(store: &ConceptStore, a: &NormalForm, b: &NormalForm, ctx: &Context) -> Decision<TermRelation>;
+
+/// What a claim is about: the head term(s). Generalizes the spike's subject_tokens (spike/src/contradiction.rs:700).
+pub fn subject_of(store: &ConceptStore, claim: &Claim, ctx: &Context) -> Decision<Subject>;
+```
+
+`semantic` is what stops the spike's dominant failure. Of the 37 contradiction pairs, 36 were noise, 21 of them from one generic word
+carrying pairs across unrelated senses ("budget" 11, "harvest" 4, "lifecycle" 3, "written" 2, "network" 1;
+`spike-report-2026-11-16.md:334-340`). The spike's report calls the fix "a sense table for the overloaded words" (`:398`); that is
+`Concept.senses` here, and the 21 cases are its first seed and its first negative tests.
+
+### 3.5 How an alias table and a sense table are stored, and kept from rotting
+
+**Today's form** is one line per group, `a | b | c`, first canonical (`spike/aliases.txt:1-6`; parser `spike/src/normalize.rs:76-109`). It has one
+entry, and that entry is load-bearing: omitting the file flips claim `04:3` from absent to mentioned
+(`spike/HANDOFF.md:49-51`). It has no scope, no sense, no provenance and no test, so nothing can tell an entry that is right from one that
+rotted.
+
+**Proposed form** (PROPOSAL): TOML, diffable and commentable, layered by scope, one file per layer (`*.concepts.toml`):
+
+```toml
+[[concept]]
+id        = "multi-path-dag"
+canonical = "multi-path DAG"
+forms     = ["multi-path graph"]
+scope     = { project = "fuel" }          # applies in this project's corpus only
+status    = "active"                       # active | proposed | retired
+added     = "2026-11-16"
+by        = "pip"                          # who: a role or a person, never a guess
+evidence  = ["fuel:docs/architecture/03-ir.md#...", "fuel:ROADMAP.md#157"]   # where the two names were seen co-referring
+last_confirmed = "2026-11-17"
+
+[[concept.tests]]                          # executable: CI runs these
+same = ["multi-path graph", "multi-path DAG"]
+not_same = ["path graph"]
+
+[[concept]]
+id = "budget"
+[[concept.sense]]
+id = "budget-tolerance"; gloss = "numerical error tolerance budget"; cues = ["tolerance", "epsilon", "rounding"]
+[[concept.sense]]
+id = "budget-resource";  gloss = "per-device resource budget";         cues = ["vram", "byte", "device", "memory"]
+```
+
+**The maintenance story** (the requirements ask for one; this is the design, and each point is a check that can fail a build):
+
+1. **Every entry carries evidence and a `last_confirmed` date**; `analysant doctor tables` lists entries whose evidence claims are `Gone` or
+   `Superseded` (stale), entries none of whose forms occur anywhere in the current corpus (unused, candidates to retire), and entries older
+   than a configured age without confirmation.
+2. **Tables are tested like code.** Each entry's `tests` run in CI. A change to any table runs the golden corpus (5.1) and prints the diff of
+   finding-id sets; a table edit that flips a golden verdict must say so in its change fragment (this is the spike's method: its v8-to-v9
+   check diffed the run files and found them byte-identical, `spike-report-2026-11-16.md:453-455`, and its own near-miss was an alias file
+   left out of one run, `:370`).
+3. **Tools propose, humans promote.** A miner may emit `status = "proposed"` entries (two forms in the same slot of aligned claims; a
+   cluster of dismissed findings sharing a token). A proposed entry affects no finding until a human or the PM sets it `active`. Nothing is
+   auto-applied, because a wrong alias silently *removes* findings (it merges two things), which is the dangerous direction.
+4. **Every finding records the table entries it used** (`Derivation.table_entries`), so retiring or editing an entry yields the list of
+   findings to re-run, and a report can say "this absence relied on alias X".
+5. **Ownership follows scope.** The `en` pack's tables live in the AnalysAnt repo under CODEOWNERS; a project's table lives in that
+   project's repo and is maintained by that project's lane, next to the documents it describes; the table's content hash is printed in
+   every report header so a report is reproducible.
+6. **Rot is measured, not hoped about.** Per table: unused ratio, median age since confirmation, and the dismissal rate of findings that
+   used it. A table whose dismissal rate is above the precision pass line (5.2) is flagged.
+
+## 4. The tool seam (sketch)
+
+The tool interface is defined now and built second (requirements, "Sequencing"): the analysis is built to be called, not wrapped later.
+
+### 4.1 A lens is a function with a declared shape
+
+```rust
+pub trait Lens {
+    fn spec(&self) -> LensSpec;                    // name, description, input_schema, output_schema, cost class, side_effects = None
+    fn run(&self, corpus: &Corpus, params: &Params, ctx: &mut RunContext) -> Report;
+}
+pub struct LensSpec { pub id: LensId, pub requires: Vec<LensId>, pub cost: Cost /* Cheap | Batch */, pub reads_code: bool /* ... */ }
+```
+
+`LensSpec` is plain data (JSON Schema for input and output, derived with `schemars`, PROPOSAL), so a later `analysant-mcp` can publish one MCP
+tool per lens without a line of lens-specific glue. `analysant-core` takes **no MCP dependency**; the PM suggests the MCP and editing
+tools are separate projects built on AnalysAnt (`docs/IDEAS-AND-DECISIONS-2026-11-17.md:70-71`); that is CireSnave's call (D5).
+
+Two tool shapes serve the stated goal of "high-level understanding without spending vast portions of the tokens":
+
+- `health_report(project) -> Report` : counts per lens and finding kind, the top-k findings by severity, **coverage** (what was and was not
+  analysed), and finding ids. Short by construction (a size budget is a parameter).
+- `explain(finding_id) -> Explanation` : the claims involved (with text and locator), the derivation (rules, table entries) and the search
+  record. Findings are expanded on demand, not dumped.
+
+### 4.2 A finding carries what was searched and a control
+
+This is the portfolio's absence-claim rule (`C:\Projects\CLAUDE.md` section 6: state the control beside the null) made a type, so it cannot be omitted:
+
+```rust
+pub struct Finding {
+    pub id: FindingId,                    // stable: hash of (lens, kind, sorted claim ids, key); survives re-runs
+    pub lens: LensId, pub kind: FindingKind,
+    pub claims: Vec<ClaimRef>,
+    pub statement: String,                // one sentence a reader can check
+    pub derivation: Vec<Derivation>,      // rules fired, table entries used, in order
+    pub basis: Basis,                     // Deterministic | ModelJudged { model, input_hash }
+    pub search: SearchRecord,             // REQUIRED for any absence or "no discrepancy" claim
+    pub control: ControlResult,           // REQUIRED whenever `search` is
+    pub disposition: Disposition,         // Open | Dismissed{reason} | Accepted | Fixed{ref}
+}
+
+pub struct SearchRecord {
+    pub looked_in: ScopeDescription,      // documents (count, names or glob), code roots, at which revisions
+    pub population: u64,                  // how many units were in scope: the denominator
+    pub query: QueryDescription,          // normalized key, aliases applied, match mode
+    pub matched: u64,                     // the null is matched == 0, stated as a number
+    pub excluded: Vec<(Reason, u64)>,     // what was set aside, and how many, so exclusions are visible
+}
+
+pub struct ControlResult {
+    pub kind: ControlKind,                // SelfFind | KnownPresent | DeclaredPresent
+    pub item: ClaimRef,                   // the control's own subject
+    pub outcome: ControlOutcome,          // Found | NotFound(=> the finding is INVALID and is withheld)
+}
+```
+
+**Controls the engine runs on its own:**
+- *SelfFind:* take a sample claim from the same population, search its own key against its own line with the same matcher and mode. If this
+  fails the matcher is broken on this input (wrong tokenizer for the script, a normalizer that eats the key) and **every absence in that run
+  is withheld**, not reported as clean. It has the same query and population as the null, varying only the subject, held at the same clock
+  (the portfolio's "vary the subject, hold the clock").
+- *KnownPresent:* an item the project **declares** present in each searched document class (`controls` in `project.toml`).
+- A control that points at the same object as the null, or at an empty string, is rejected by construction (`item != null subject`,
+  `key` non-empty): the portfolio's warning that a sound control "can't tell you that you pointed it at the same object twice"
+  (`C:\Projects\CLAUDE.md` section 6).
+
+`health_report` never says "no discrepancies" without the `SearchRecord` and `ControlResult` of the checks that produced the silence.
+
+## 5. Acceptance
+
+### 5.1 Gate A: the spike as golden oracle
+
+The spike is the **oracle, not the base** (`docs/IDEAS-AND-DECISIONS-2026-11-17.md:54-62`). Its inputs and outputs are in the repo:
+`spike/corpus/fuel/` (25 files in `arch-wide/`, the 3-file narrow corpus in `arch-run/`, `ROADMAP.md`), `spike/aliases.txt`, and the runs
+`spike/runs/fuel-2026-11-16-v2..v9.txt`. Pinned figures, read from the run files (v8 and v9 headers, lines 1-8):
+
+| run | claims | absent | mentioned | set aside | owned | contradictions | doc-vs-code |
+|---|---|---|---|---|---|---|---|
+| v3 (narrow corpus) | 558 | 212 (75 dir / 103 named / 34 ident) | 346 | - | - | - | - |
+| v8 (wide corpus + doc 15) | 3846 | 764 (107 / 271 / 386) | 2115 | 518 | 449 | 37 | - |
+| v9 (v8 + code at `b0d74efa`) | 3846 | 764 | 2115 | 518 | 449 | 37 | 236 built, 34 stub, 22 test-only, 472 absent |
+
+**The gate:** the generic crates, given Fuel *only as data* (corpus, `aliases.txt` as the first concept layer, a `project.toml`
+expressing the ROADMAP row pattern and the note-citation pattern), reproduce, per slice as it lands:
+
+1. **Finding-id-set equality** against the matching run for the lexical, pragmatic and doc-vs-doc slices (v3, then v6/v7, then v8), where
+   the algorithm is the same. Differences are allowed only when each one is listed and explained (for example, the spike's `file:line` ids
+   map to ledger ids; the comparison keys on `(file, line, key)`).
+2. **No Fuel-specific code**, enforced mechanically (2.5): a deny-list grep over engine `src/` with a positive control over the fixtures.
+3. **The seven validation rows** against the planned-vs-built audit (`spike-report-2026-11-16.md:463-471`) for the Rust slice, **not** the
+   v9 counts: a real parser will legitimately count differently from a line scanner. Four rows agreed with the audit; the generic Rust
+   pack must at least match those four, and on the three where the spike disagreed (dead production code, dead chain, wrong-path
+   reachability) must report the disagreement *explicitly* (reachable-from-where is part of the verdict) rather than a bare BUILT.
+   Closing those three needs the call-graph lens the spike itself names (`spike/HANDOFF.md:67-70`); it is not required for step 1.
+4. **Verdict vocabulary.** The spike's BUILT means "a production definition with a production call site", the audit's STUB/ABSENT means "not on
+   the realize path" (`spike/HANDOFF.md:67-70`). The generic engine reports `Implements`/`Missing` with the *scope of the reachability
+   claim* attached, and the Fuel mapping to BUILT/STUB/ABSENT is a report template, not engine behaviour.
+5. **Recall replay (PROPOSAL, UNVERIFIED feasible).** The spike observed that run on the ROADMAP *before* row 157 existed would have
+   put the multi-path DAG at the head of the finding list (`spike-report-2026-11-16.md:36`, with a miniature test of the same case). The gate
+   adds the real replay: run the generic tools on Fuel at the commit before row 157 was added, and require the DAG to be a finding. I have not
+   checked that Fuel's history supports this replay.
+
+**Declared caveats about the oracle (so it is not over-trusted):** its precision is poor (472 of 764 absences remained ABSENT in code; 36
+of 37 contradiction pairs are noise, `spike/HANDOFF.md:28-29`), so Gate A proves **fidelity to a known, weak baseline, not quality**. The
+spike's own figures are Pip's and unreproduced by the lane: the HANDOFF claims 116 passing tests, while `grep -c '#[test]'` over
+`spike/tests/` and `spike/src/` finds 118 + 1 (the difference may be doc-tests, ignored tests or a different counting basis).
+**UNVERIFIED: I have not run the spike's tests or fetched the 51 MB code tree.** Gate A's first act (slice 0, section 6) is to run both.
+
+### 5.2 Gate B: the precision gate (modelled on CodeRipper's)
+
+Method source: `C:\Projects\coderipper\docs\superpowers\plans\2026-10-24-performance-rules-precision.md:8-47` (read in the working tree; not pinned to
+a ref). Adopted as written, with the changes noted:
+
+- **Population:** every finding of a given `(lens, finding kind)`, over **at least three projects other than Fuel** (Fuel is the oracle and
+  the tuning set; scoring on it would overfit). CodeRipper used three repositories (fuel, baracuda, Unpopped). Which three is D2.
+- **Order and sampling:** sort by `(project, file, line)`, then shuffle with a **specified, language-independent seeded PRNG** (SplitMix64
+  driving Fisher-Yates, seed fixed in the report). CodeRipper's shuffle is Python's `random.Random(2026)` (`:34`), which a Rust tool cannot
+  reproduce bit-for-bit; the algorithm is therefore written into this spec and tested with fixed vectors.
+- **Stop rule:** judge until **30 judged, or until the pass line is unreachable**, whichever is first. With pass line *p* the stop is
+  `floor(30 * (1 - p)) + 1` false positives (CodeRipper's 80% bar: the 7th false positive, `:36-37`). A kind with fewer than 30 findings is a
+  **census**, read whole, and cannot satisfy the "30 sampled" clause (`:36`).
+- **Rubric (draft; the finding must be judged against the sources at the finding's own revisions):**
+  - TRUE: the discrepancy or absence it states is real at the stated revisions **and** a reader acting on it fixes or learns something
+    real (the document, the plan or the code is wrong, stale, or missing a thing it should have).
+  - FALSE, with a **named noise class**: the spike's six are the starting list (one generic word carrying the pair; the denied token is
+    absent from the positive side; a bare label as the positive side; scoped negation; a scope note read as a refusal; a copula
+    classification read as a denial; `spike-report-2026-11-16.md:330-364`), plus new ones as found. Named classes become the next sense-table
+    and rule work, which is the point of naming them.
+  - UNJUDGEABLE (cannot be shown from the sources): **counted FALSE, as a lower bound**, the same convention as CodeRipper (`:42-43`).
+- **Who judges:** one reader writes every verdict and a reason in a table anyone can dispute (CodeRipper's own caveat: "not an independent
+  labelling", `:46-47`). **Addition:** a second judge (another lane or CireSnave) re-judges 10 of the 30 blind, and the report states the
+  agreement; agreement below a threshold voids the figure.
+- **Model-judged findings are excluded** from the deterministic figure and measured on their own (3.3).
+- **Report:** per kind: findings, judged, true, precision, the one-sided **95% upper bound when true is 0** (CodeRipper's "about 7% (3/42)",
+  `:65-66`, the rule of three), stop reason, disposition.
+- **Tuning discipline:** a rule tuned on a sample invalidates that sample; the re-measure uses a **fresh** sample (different seed, and
+  projects not seen during tuning). Without this the gate measures the tuner, not the tool.
+
+**The pass line is CireSnave's** (D1). **PROPOSAL (strawman only):** 80% true on at least 30 judged per reported finding kind, which is what
+CodeRipper holds; a kind below the line is **not shown in `health_report`** (it can still be run and inspected) rather than shown with a
+warning, because the false-confidence risk is that a presented finding is believed.
+
+### 5.3 Gate C: kill / continue (for CireSnave to set)
+
+The decision is his; this section gives him the evidence the gate will produce and a strawman. It follows the PM's stage 2 gate
+(`docs/IDEAS-AND-DECISIONS-2026-11-17.md:45-49`: "CireSnave sets the pass line; below it, stop or re-scope").
+
+**Evidence produced at the end of stage 2:** Gate A result (fidelity, with every difference explained); Gate B table per finding kind;
+the named-noise-class list with which are fixed by data and which need a model; lane-days spent; the list of finding kinds that clear the
+line.
+
+**Strawman (PROPOSAL):**
+- **Continue** if Gate A holds and at least **one** finding kind clears the pass line on three projects and answers a question the PM says
+  a lane would otherwise ask by hand (the planned-vs-built audit is the named example).
+- **Re-scope** (keep the base crates and ship only the kinds that clear) if some clear and some do not.
+- **Stop** if **no** kind clears after **two tuning rounds**, each remeasured on a fresh sample (5.2), or if Gate A cannot be reached without
+  Fuel-specific code (the genericity claim failed, which is the project's central claim).
+- The **cost** line is a number of lane-days CireSnave names (the PM's note lists opportunity cost against Unpopped and Fuel as a risk,
+  `docs/IDEAS-AND-DECISIONS-2026-11-17.md:41`); I do not invent one.
+
+## 6. Build order
+
+Each slice delivers something checkable on its own and is gated by the oracle (5.1) before the next starts. One PR per day per project
+(portfolio rule); a slice may take several days and use a working branch.
+
+- **Slice 0: confirm the oracle (no product code).** Run the spike's tests; fetch the Fuel tree at `b0d74efa`; reproduce v9; record the real
+  test count. Output: a short note in `docs/`. Why first: Gate A is only as good as the baseline it compares to (5.1, caveats).
+- **Slice 1, the smallest first slice: `analysant-core` + `analysant-lexical`, reproduce run v3.** Core: unit tree, `Claim`, `Form`, `Relation`
+  types, `ClaimRef`, `Finding`, `SearchRecord`, `ControlResult`, the in-memory ledger (file format later), the Markdown `FormatAdapter`
+  (PROPOSAL: in core behind a `markdown` feature, so a structural library is not a prerequisite), the `en` pack's tokenizer/normalizer/
+  extract with its tables as data files. Lexical: normalize, `matches` (`TokenSubset`), `TermIndex`, alias canonicalization (a flat alias
+  layer first). Gate: the 558 claims and 212 absent / 346 mentioned of v3 on the narrow corpus with `aliases.txt`, finding ids compared on
+  `(file, line, key)`; the deny-list check; the SelfFind control wired in. **No pragmatic classification, no code, no contradiction.** v3 is
+  chosen because it is the last run before the pragmatic lens: it needs only extraction, normalization and matching.
+- **Slice 2: `analysant-semantic` (concept store, sense table) and the pragmatic lens (status first, then directive, then description,
+  the spike's order, `spike/src/pragmatic.rs:15-20`).** Gate: runs v4 to v5 (absent 212 to 105 to 73 on the narrow corpus, `spike/HANDOFF.md:23-24`).
+- **Slice 3: genre handling and ownership as project configuration** (outcome filter; note-to-row ownership via the plan-row pattern),
+  wide corpus. Gate: v6 to v7 (absent 688, owned 449).
+- **Slice 4: the contradiction lens on `semantic`, including the sense table seeded from the 21 generic-word cases.** Gate: the 37 pairs
+  reproduced, and then the 21 sense-noise pairs *removed with the cancellation pair still found* (the first place the generic code should
+  beat the oracle, and the first Gate B sample).
+- **Slice 5: the Rust language pack** (`syn`), doc-vs-code relations, the seven validation rows.
+- **Slice 6: the tool seam made real** (`LensSpec`, `health_report`, `explain`) in a separate project if D5 says so.
+- **Stage 4 (not mine yet): rewriting tools**, last by CireSnave's sequencing.
+
+**Repo hygiene** (HANDOFF; same PR or the next): CI (build, test, `clippy -D warnings`, `fmt`, `cargo deny`), the portfolio CodeRipper
+workflow, `changelog.d/` fragments (one per PR), SPDX headers on every source file, CHANGELOG, a workspace `Cargo.toml` whose members are
+added only when their code exists. This PR adds the changelog fragment and CHANGELOG only; the CI workflows and the first workspace land in
+the next PR (PM sets branch protection after the first CI run).
+
+## 7. What carries over from the spike, and what does not
+
+**Reused as ideas, with credit:** the claim-shape split (identity, text, key, section, kind), `spike/src/claim.rs`; the *order* of the pragmatic
+tests (status, then directive, then description, then default, `pragmatic.rs:15-20`); word-boundary phrase matching instead of substring
+(`pragmatic.rs:158-177`); stripping code spans before reading prose polarity (`pragmatic.rs:136-156`); the alias-then-subset matching
+(`normalize.rs`, `check.rs`); identifier splitting (`rust_code.rs:145-149`); the contradiction lens's scoping rules (head window, negation
+of a bad thing is positive, contrast split for headings only, strict pairing; `contradiction.rs:23-79`); the genre handling (outcome
+filter, note-to-row ownership); and the **validation method** (additive diffs of run files, audit rows as ground truth for validation only,
+never an input, `spike/HANDOFF.md:97-100`).
+
+**Reused as data:** the corpus (`spike/corpus/fuel/`), `aliases.txt`, the run files, the 37-pair triage and its six noise classes, the
+seven validation rows, as acceptance fixtures.
+
+**Not reused:** the code. One crate with Fuel-shaped lexicons (the `fuel` pairing stopword, `contradiction.rs:636`; the imperative list;
+`BAD_WORDS`, `contradiction.rs:262`) and a Fuel ROADMAP row format (`ownership.rs:101-115`); position-based identity; two overlapping enums
+for kind and role; an English-shaped tokenizer; the hand-rolled Rust scanner and its named gaps (`rust_code.rs:8-37`). Where any spike
+*code* is later ported, it keeps its SPDX/licence header and a credit to Pip and CireSnave: the spike declares `MIT OR Apache-2.0`
+(`spike/PROVENANCE.md`), the same licence as this repository.
+
+## 8. What I did not decide
+
+Each is an `[ASK]` to the PM (recommended answer first).
+
+| # | Question | Recommend | Blocks |
+|---|---|---|---|
+| D1 | The precision pass line and the kill/continue criterion (CireSnave's) | 80% on 30 judged per finding kind, three non-Fuel projects, two tuning rounds (5.2, 5.3) | Gate B, Gate C |
+| D2 | Which three other projects form the Gate B population | one repo each from a Rust library, a Rust application and a docs-heavy repo; baracuda and Unpopped (used by CodeRipper's sample) are candidates | Gate B |
+| D3 | Is the ledger committed to the analysed project, and how do branches merge it (1.9) | committed; merge by union of event records, since events carry unique ids | slice 1's file format |
+| D4 | Markdown adapter inside `analysant-core` behind a feature (recommended), or only in `analysant-structural` | core + feature, so slice 1 needs no unbuilt crate | slice 1 |
+| D5 | MCP and editing tools as separate projects on AnalysAnt (the PM's suggestion) or crates in this repo | separate, per the PM | slice 6 |
+| D6 | The escalation model and its resource ceiling (3.3) | none until a Gate B shows a named noise class that tables cannot fix | any ML work |
+| D7 | The ledger's and tables' location convention (`.analysant/`) across the portfolio | `.analysant/` at repo root | slice 1 |
+| D8 | Rust pack parsing route (`syn` vs tree-sitter vs rust-analyzer) and whether to reuse CodeRipper MOD-011 reachability (I have not read it) | `syn` for items, compiler-backed reachability later | slice 5 |
+| D9 | Whether Gate A's "Fuel as data only" may include a Fuel `project.toml` kept in this repo, or must live in the Fuel repo | in this repo under `tests/fixtures/`, as it is test data | slice 1 |
+| D10 | Whether claim `kind` stays a single enum or becomes a set (a sentence can be a decision *and* a directive) | single, primary kind plus lens-private tags, until a Gate B case needs more | slice 2 |
+
+## 9. Unverified list (everything I did not check)
+
+- The spike's test count and that its tests pass (5.1): not run.
+- That `corpus/fuel/code/` can be fetched at `b0d74efa` and v9 reproduced: not run.
+- That Fuel's git history supports the pre-row-157 replay (5.1 item 5).
+- CodeRipper MOD-011 (2.6): not read; cited only from `docs/IDEAS-AND-DECISIONS-2026-11-17.md`.
+- The CodeRipper precision plan was read in the working tree, not at a pinned ref (5.2).
+- The requirements' existing-tooling survey was not available to me (`docs/REQUIREMENTS-2026-11-16.md:5`), so nothing here is compared
+  against ProseMirror, DITA, SummaC, GraphRAG or the others; "reuse an existing crate" options for tokenization or segmentation are not surveyed.
+- `syn`, `schemars` and every other dependency named here as a PROPOSAL: version and licence not checked; they must be the current
+  crates.io versions at the time of use (portfolio dependency rule).
+
+— lane: analysant
