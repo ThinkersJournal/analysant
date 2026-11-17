@@ -1,0 +1,6 @@
+# Alias groups for the spike. One group per line, phrases separated by `|`.
+# The first phrase is canonical. Synonymy is data, not code.
+# Seeded with the one equivalence the Fuel corpus proves: the architecture
+# calls it the "multi-path graph" (03-ir) and the ROADMAP/audit call it the
+# "multi-path DAG" — the same structure, two names.
+multi-path DAG | multi-path graph

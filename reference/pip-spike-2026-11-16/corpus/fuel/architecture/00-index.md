@@ -1,0 +1,153 @@
+# Fuel architecture: index
+
+**Status**: v1.2 (2026-07-28). v1.2 adds **[15 consumer-contract](15-consumer-contract.md)** — the upward-facing mirror of [05 backend-contract](05-backend-contract.md), stating what fuel provides to the systems built *on* it and what it correspondingly doesn't decide — and records the withdrawal of 09's "the architecture's center of gravity is inference" claim ([10-decisions-log §2026-07-28](10-decisions-log.md)). The architecture set is the durable description of what fuel is and how it's structured. Code, ROADMAP, and per-phase design documents anchor to this set. When this set and any phase document conflict, this set is authoritative; the phase document is updated to match. v1.1 (minor) refreshes the section summaries for the 2026-06-20 adaptive-runtime-fusion decision (recipe principle, two-tier runtime extensibility, missing-fusion telemetry, the Fuel-strategist / backend-synthesizer JIT loop); see [10-decisions-log](10-decisions-log.md).
+
+**Audience**: future-you, future-me, contributors (human or model) trying to understand "what is fuel trying to be?" Not new users. Not API reference. Not tutorials.
+
+**Living document**: each section is independently versioned; material changes are recorded in [10-decisions-log.md](10-decisions-log.md). The v1.0 establishment entry summarizes the 24 architectural decisions made during the v0.x → v1.0 drafting period.
+
+---
+
+## The set
+
+| # | Section | Summary |
+| --- | --- | --- |
+| 01 | [identity](01-identity.md) | What fuel is, what it isn't, what makes it competitive |
+| 02 | [layers](02-layers.md) | Crate boundaries, layer model, dependency direction |
+| 03 | [ir](03-ir.md) | DAG, base map (the total-`decompose` fixpoint), build-time-closed primitive Op enum, fused-op registry + the mandatory recipe (decompose + pattern), layouts |
+| 04 | [optimization](04-optimization.md) | DecompositionMap, OptimizationMap (Tier-2 runtime-updatable via the declarative form), the recipe principle, per-decision-point alternatives, sliding window |
+| 05 | [backend-contract](05-backend-contract.md) | What backends provide (kernels, capabilities, telemetry, slot capacity) including JIT-on-request synthesis of a Fuel-chosen region; what they don't decide |
+| 06 | [runtime](06-runtime.md) | Route picker, dispatch lookahead, data parallelism, telemetry-driven decisions |
+| 07 | [tolerance](07-tolerance.md) | Per-op error budgets, hierarchical specification, approximate optimizations, calibration |
+| 08 | [pattern-harvest](08-pattern-harvest.md) | Opt-in telemetry to guide fused-op development; missing-fusion telemetry (closed-world `FusionMissRecord` first, open-world co-occurrence deferred) feeding the adaptive-fusion loop |
+| 09 | [non-goals](09-non-goals.md) | What fuel deliberately doesn't try to be; the trusted/untrusted + two-tier runtime-extensibility reconciliation (build-time-closed primitives + untrusted rules stay out; trusted Fuel-orchestrated fused-op registration is in-bounds) |
+| 10 | [decisions-log](10-decisions-log.md) | Material architectural changes over time |
+| 11 | [persistence](11-persistence.md) | Optimization-cache and tolerance-recipe sibling artifacts; format, invalidation, mmap |
+| 12 | [multi-output](12-multi-output.md) | Option-C bundled storage + `Op::View`/`Op::ViewOwned`/`Op::ScatterIntoSlot`; multi-output authoring contract |
+| 13 | [interchange](13-interchange.md) | Model import/export; weight⊥graph axes; base map as hub; per-format binding seam; native format reuses base-map serialization; scaffolder |
+| 14 | [lifecycle](14-lifecycle.md) | End-to-end flow (load → graph → plan → realize → inference/training) + the canonical glossary; the closed-loop adaptive optimizer (Fuel-strategist / backend-synthesizer JIT loop, explore/exploit); the orientation/spine doc — start here |
+| 15 | [consumer-contract](15-consumer-contract.md) | What fuel provides to the systems built *on* it (capacity, bounded preemption, state externalization, measured cost, constraint admission, observation, declared mutation) and what it doesn't decide (fairness, admission, work lifecycle); the mechanism/policy line derived from cost fungibility; consumer classes. The mirror of 05 |
+
+---
+
+## Reading order
+
+**For a new contributor wanting the picture in 30 minutes**:
+
+0. → **[14 lifecycle](14-lifecycle.md)** — the end-to-end flow (load → graph → plan → realize → inference/training) and the canonical glossary. Read this first; it frames everything below.
+1. → 01 identity (5 min)
+2. → 02 layers (3 min)
+3. → 03 ir (8 min)
+4. → 04 optimization (10 min — the longest)
+5. → 09 non-goals (3 min)
+
+That's the spine. The remaining sections are there when you need them.
+
+**Companion (concrete types, not in the constitution):** → [`docs/foundational-types.md`](../foundational-types.md) — "the atoms": `Node = (Op, inputs, Shape, DType)`, the layered types with file:line, the runtime-value primitives (`SymId`/`SymEnv`/`DynScalar`/`Extent`), and *why* a node carries no kernel/backend/plan. The architecture set says what/why and is type-signature-free by design; this is its code-map companion. Read it alongside 03.
+
+**For someone designing a new phase**:
+
+1. Read 01 to ground purpose.
+2. Read 03 + 04 to ground IR and optimization model.
+3. Read 05 if your phase touches a backend; 15 if it touches a consumer boundary (serving, training loops, anything that decides *whose* work runs); 06 if it touches runtime; 07 if it touches numerical precision.
+4. Cross-check against 09 (non-goals) before committing to scope.
+5. After the phase ships, append a row to 10 (decisions log) if material decisions changed.
+
+**For a code reviewer asking "is this aligned with fuel's architecture?"**:
+
+- The relevant section number is usually obvious from the PR description.
+- If it's not, the change probably touches multiple sections; review against each.
+
+---
+
+## Cross-link map
+
+The architecture sections aren't independent. Below is the dependency graph — an arrow A → B means "A's content is grounded in concepts B defines."
+
+```text
+01 identity ──┬──→ 03 ir
+              ├──→ 04 optimization
+              ├──→ 05 backend-contract
+              ├──→ 15 consumer-contract
+              └──→ 07 tolerance
+
+02 layers   ──→  03 ir
+
+03 ir       ──┬──→ 04 optimization
+              ├──→ 05 backend-contract
+              ├──→ 06 runtime
+              └──→ 11 persistence
+
+04 optimization ──┬──→ 05 backend-contract
+                  ├──→ 06 runtime
+                  ├──→ 07 tolerance
+                  ├──→ 08 pattern-harvest
+                  └──→ 11 persistence
+
+05 backend-contract ──┬──→ 06 runtime
+                      ├──→ 07 tolerance
+                      └──→ 11 persistence
+
+06 runtime ──→ 11 persistence
+
+07 tolerance ──┬──→ 06 runtime
+               ├──→ 08 pattern-harvest    (shared community-telemetry infra)
+               └──→ 11 persistence         (tolerance-recipe sibling artifact)
+
+08 pattern-harvest ──→ 11 persistence       (shared community-telemetry infra)
+
+09 non-goals          (referenced by 01, 04, 07; mostly self-contained)
+10 decisions-log      (records changes to all of 01-09, 11)
+11 persistence ──→ 03, 04, 05, 06, 07, 08   (cross-cuts everything that produces a persistable artifact)
+
+13 interchange ──┬──→ 02 layers       (crate tiers that implement import/export)
+                 ├──→ 03 ir            (the base map is the interchange hub)
+                 └──→ 11 persistence   (native format reuses the base-map serialization)
+
+15 consumer-contract ──┬──→ 01 identity          ("advertise, don't decide", one layer up)
+                       ├──→ 05 backend-contract  (its mirror — opposite polarity, same principle)
+                       ├──→ 07 tolerance         (C-5's tolerance half, already specified)
+                       ├──→ 09 non-goals         (the refusals, in negative-space register)
+                       └──→ 11 persistence       (C-7's across-restart counterpart)
+```
+
+If you change 03 (the IR), expect to revise 04, 05, 06, 11. If you change 04 (the optimization model), expect to revise 06, 07, 08, 11. If you change 01 (identity), the whole set may need re-anchoring.
+
+---
+
+## Versioning convention
+
+Each section's header records its version. Bump when the change is material — a redirection, a new architectural decision, a removed concept. Don't bump for typos, clarifications, link fixes. The version is `vMAJOR.MINOR`:
+
+- MAJOR increments when a section's *core claim* changes (e.g., "fused ops live in a registry, not in Op" is a major change to 03).
+- MINOR increments when content is added or refined without changing core claims.
+
+The decisions log (10) records every MAJOR bump with one paragraph of context (what changed, when, why, related PRs).
+
+---
+
+## How phase docs relate to this set
+
+This set defines the steady-state architecture. Phase documents (currently in `docs/`: `storage-unification.md`, `fused-op-registry.md`, `fuel-consumer-seam.md`) describe in-flight work that moves the codebase toward this steady state.
+
+The relationship is:
+
+- A phase doc may *propose* a change to this set. The proposal is reviewed; if accepted, the set is updated; the phase doc references the updated section.
+- A phase doc may *cite* this set for context. Cite by section number (`see 03-ir.md`). Don't restate; link.
+- When a phase ships, its decisions log entry (in 10) records what (if anything) changed in this set as a result.
+
+Implementation detail (file layouts, type signatures, code shapes) lives in phase docs, not here. This set says *what* fuel is and *why*, not *how* to implement it.
+
+---
+
+## Out of band: set status
+
+**Corrected 2026-07-29.** This section previously described the set as a v0.1 draft — "sections will land one or two at a time", "the decisions log is empty until v1.0", "when all 11 sections exist, this header gets bumped to v1.0". **All three statements are obsolete.** The set passed v1.0 on 2026-05-09, is at **v1.2**, contains **15 sections** (not 11), and the decisions log has been load-bearing since v1.0.
+
+What remains true:
+
+- **Individual sections carry their own versions**, and several are still `v0.x` drafts (e.g. `02` v0.5, `05` v0.6, `09` v0.4, `15` v0.2). A `v0.x` section is in active drafting; a section version is independent of the set version.
+- **Sections may be partial**, and content is refined in place rather than frozen.
+- **The decisions log records every MAJOR bump** and is the audit trail for why the architecture says what it says.
+
+Set-version bumps are recorded in the log alongside the section changes that prompted them.

@@ -1,0 +1,1583 @@
+# Decisions log
+
+**Status**: v1.0 (2026-05-09).
+
+Material architectural changes over time. Each entry records what changed, when, why, and which sections were affected. The log is the audit trail for the architecture; it answers "why does the architecture say X?" when X is non-obvious.
+
+---
+
+## Format
+
+Each material decision gets one entry. Entry shape:
+
+```text
+## YYYY-MM-DD — Short title
+
+**Sections affected**: 01, 03, 04 (whichever were revised)
+**Phase / PR**: Phase 7.6, or PR #N, or "design pass — no code"
+**Bumped to**: 01 v1.1 → v1.2, 03 v1.0 → v2.0, etc.
+
+**What changed**: one paragraph summarizing the architectural shift.
+
+**Why**: the underlying motivation. Often a real consumer pressure, an
+incident, a design pass that surfaced a tension, or a contradiction the
+existing architecture couldn't resolve.
+
+**Alternatives considered**: 1-3 alternatives the project examined and
+rejected, with brief reasons.
+
+**Implications going forward**: what this decision constrains or unlocks
+for future work.
+```
+
+The format keeps entries small (a paragraph or two each) but informative enough that someone reading the log a year later can understand the decision without re-deriving the context.
+
+## What counts as material
+
+A change is material — and gets a log entry — if it:
+
+- Changes a section's *core claim* (warrants a MAJOR version bump per the index's versioning convention).
+- Removes or substantially redirects a previously-stated commitment.
+- Adds a new commitment that constrains future work.
+- Resolves a previously-deferred decision (one of the audit's cross-cutting questions getting a definitive answer).
+
+A change is *not* material — and doesn't need a log entry — if it:
+
+- Fixes typos, link rot, or formatting issues.
+- Adds clarifying language without changing meaning.
+- Refines an existing commitment without changing its scope.
+
+The distinction is judgment. When in doubt, log it; entries are cheap, missing context is expensive.
+
+## What doesn't go here
+
+The decisions log records *architecture-set* changes — modifications to the documents in `docs/architecture/`. Other kinds of decisions live elsewhere:
+
+- **Phase work plans, sub-task ordering, work-item scoping**: ROADMAP.md.
+- **Per-feature design decisions during implementation**: per-phase design docs in `docs/` (e.g., `docs/storage-unification.md`, `docs/fused-op-registry.md`).
+- **Code-level design decisions, type-shape choices, file layouts**: code reviews, commit messages, PR descriptions.
+- **Memory entries** about session-by-session context: `~/.claude/projects/.../memory/`.
+
+Cross-references are fine — an architecture-decision-log entry can link to the phase doc that motivated it. But the architecture log isn't a replacement for those other records.
+
+---
+
+## 2026-05-09 — Architecture set v1.0 established
+
+**Sections affected**: 00 through 11 (all eleven sections established or revised).
+**Phase / PR**: design pass — no code.
+**Bumped to**: 00 v1.0, 01 v0.2, 02 v0.2, 03 v0.2, 04 v0.3, 05 v0.2, 06 v1.0, 07 v0.3, 08 v0.2, 09 v0.1, 10 v1.0, 11 v1.0.
+
+**What changed**: the v0.x → v1.0 drafting period (2026-05-08 to 2026-05-09) established the foundational architecture set in `docs/architecture/`. Eleven sections were drafted and iteratively revised across two batch revision passes. Twenty-four material architectural decisions were made during the drafting; the architecture set replaces the previous piecemeal phase-by-phase design approach with a single durable description that all phase work anchors to. Triggered by the architectural audit (`docs/architecture-audit.md`, 2026-05-08) which mapped eight in-flight architectural threads, surfaced five cross-cutting questions, and recommended this consolidation over continued phase-by-phase work.
+
+**Why**: through May 2026 fuel had accumulated multiple in-flight architectural threads (Phase 7.5 storage unification, Phase 7.6 FusedOpRegistry, Phase 6b Judge, scheduler-driven residency, GradientRule migration, CUDA depth migration, Layout-on-Node, binding table) that were partially mutually inconsistent. The architectural audit identified that piecemeal continued work would compound rather than resolve the inconsistencies. The user chose to pause feature work and produce a foundational architecture set — the constitutional document the rest of fuel anchors to.
+
+**Twenty-four decisions captured during v0.x → v1.0**:
+
+1. **DAG-first identity.** Fuel commits to "the DAG is the source of truth for every decision." All strategic decisions (placement, fusion, kernel-variant choice, slot assignment, tolerance trade-offs) live at the DAG level; backends advertise capabilities and execute what the optimizer hands them. (01-identity.)
+
+2. **Five competitive edges.** Cross-backend placement aware of fusion catalogs; algebraic-equivalence rewrites; top-N route preservation; pattern-harvest-driven fused-op development; per-op tolerance budgets. (01-identity.)
+
+3. **The bet stated as compounding.** "Bigger fused kernels matter and will keep mattering. Above the kernel layer, optimization techniques that span ops, span backends, adapt at runtime, and trade controlled error for compute will keep finding wins backend-internal fusion can't reach." Both layers compound. (01-identity.)
+
+4. **Op-shape A: closed enum primitives + `Op::Fused(id, params)` arm.** No separate `NodeKind` discriminator type. After exploring four options (A two-tier; B newtype + collapsed registry; C parallel types with NodeKind; D flat enum with all ops), the user chose A for long-term goals — preserves open-registry property for fused ops while keeping the type system reflective of the architecture. (03-ir.)
+
+5. **Pre-resolved KernelRef per node.** The binding table is a planning-time catalog, not a runtime lookup; the executor calls function pointers directly. Resolves audit Q-A definitively. Lazy resolution at use time pairs with mmap'd cache. (03-ir, 06-runtime.)
+
+6. **Three coexisting artifacts**: user-facing form, base map (canonical primitive DAG, retained as permanent artifact), optimized form (top-N alternatives per decision point with pre-resolved kernels). (03-ir.) *(**Amended 2026-06-14** by the "plan is the graph" redirection below: the optimized form is not a separate top-N artifact — it is the **same graph transformed in place** into bounded Pareto paths + decision points. User-facing form and base map stand; "top-N alternatives" is superseded by the per-device frontier. See [03-ir](03-ir.md).)*
+
+7. **Per-decision-point alternatives, not N global routes.** The optimizer preserves up to N alternatives per decision point (default N=3); decisions can be coupled via conditional cost adjustments. The runtime route picker resolves alternatives at dispatch time using current telemetry, mixing and matching across decision points. Strictly more flexible than top-N complete plans. (04-optimization.) *(**Superseded 2026-06-14** by the "plan is the graph" redirection below: alternatives attach to **branch points** and the retained paths per device are bounded by a **Pareto frontier + crowding cap**, not a fixed N. The "per decision point, not N global routes" direction stands; the fixed `N=3` does not. See [04-optimization](04-optimization.md) and item 6's superseded note.)*
+
+8. **Three forms of parallelism named explicitly**: pipeline (sliding window between optimizer and executor), data (independent subgraphs run concurrently), within-kernel (SIMD/intra-kernel concurrency owned by backends). (04-optimization, 05-backend-contract, 06-runtime.)
+
+9. **Slot-capacity advertisement model.** Even same-device parallelism flows from DAG-level decisions, not backend-internal policy. Backends advertise total + currently-available slots; runtime allocates work to slots. Honors the "backends advertise; they don't decide" principle even at same-device granularity. (05-backend-contract, 06-runtime.)
+
+10. **Concurrent execute is per-rule, per-route.** Rules self-declare frontier-compatibility (`Concurrent` | `WholeGraph`); routes built from `Concurrent` rules can execute concurrently with optimization; routes including `WholeGraph` rules require whole-graph optimization first. Per-realize concurrency policy: `Auto` / `Required` / `Forbidden`. (04-optimization.)
+
+11. **Tolerance as fifth competitive edge with hierarchical specification.** `Strict` | `Relative(x)` | `Absolute(x)`; graph-default → subgraph override → per-op override → per-call override; tightest-wins composition. Best-effort upper bounds annotations now → empirical Judge measurement later. (07-tolerance.)
+
+12. **Tolerance discovery and calibration.** Opt-in workflow that runs models through user-supplied test inputs to discover maximum acceptable per-op tolerance budgets. Metrics library (accuracy, KL, perplexity, embedding distance, custom); search algorithms (greedy, sensitivity-first, Bayesian); hierarchical granularity (per-region → per-layer → per-op); discovered recipes shareable on community server. (07-tolerance.)
+
+13. **Reference backend dissolved into per-kernel `PrecisionGuarantee` structure.** Each kernel declares `{bit_stable_on_same_hardware, max_ulp, max_relative, max_absolute, notes}`. The always-built backend (fuel-cpu-backend by convention) commits to providing at least one `bit_stable` kernel for every primitive op as the coverage guarantee. Cleaner than special-status backend. (05-backend-contract.)
+
+14. **Pattern harvest opt-in with first-use prompt.** Industry-standard pattern (Homebrew analytics prompt, rustup installer, mise first-run) captures "people who don't care" segment without going to silent opt-out. "No silent telemetry" added as explicit non-goal. (08-pattern-harvest, 09-non-goals.)
+
+15. **Four-flow community telemetry infrastructure.** One opt-in pipeline carries: pattern harvest (op sequences) + tolerance recipes (per-op error budgets) + hardware fingerprints (auto-populates target sets) + kernel-stat summaries (refines static cost annotations toward measured reality). Per-flow privacy commitments documented. (08-pattern-harvest.)
+
+16. **Cache generation and distribution tooling.** `fuel cache generate --target-set common-2026 --defaults` produces caches for many target environments in one command. Static-cost annotations refined by community-aggregated empirical data when available. Named target sets auto-populated from opt-in fingerprint telemetry. (11-persistence.)
+
+17. **Remote loader integration.** `fuel.load("hf://...")`, `github://`, `https://`; auto-discovers sibling cache and tolerance-recipe artifacts at the model's location. fuel-loaders is the implementing crate. (02-layers, 11-persistence.)
+
+18. **Multi-version DAG-format support + opportunistic migration.** Newer fuel reads at least the previous N format versions; format additions are backward-compatible where feasible; background re-optimization migrates older caches to the current format as a side effect of producing refined plans. (11-persistence, 06-runtime.)
+
+19. **Background re-optimization with per-decision-point atomic swap.** Downloaded caches are starting points; background optimization with local empirical Judge data refines them via merge logic (cached alternatives + newly-discovered alternatives, re-ranked by local cost, top N retained per point). Atomic swap is per-decision-point, not whole-DAG. Same primitive used by concurrent optimize-and-execute. (06-runtime.)
+
+20. **Local Judge baseline initialization.** The Judge can optionally start from a community-aggregated profile for the user's hardware fingerprint before refining with local measurements. (06-runtime.)
+
+21. **Precision-filter pass before cost ranking.** Alternatives at each decision point are filtered by their `PrecisionGuarantee` against the user's per-call precision requirement and cumulative tolerance budget; cost ranking ranks the survivors. (04-optimization.)
+
+22. **Scoped re-optimization based on trigger.** Each decision point records its dependencies (kernels, devices, profile cells); triggers compute the affected scope by intersection. Most triggers (device removed, kernel updated, profile data refined) affect a small subset of decision points, not the whole graph. (06-runtime, 11-persistence.)
+
+23. **mmap'd cache with lazy KernelRef resolution.** Cache files are mmap'd at process startup, not read into memory; only the cache header gets touched immediately. KernelRef resolution is lazy at decision-point pick time. Startup is near-instant for cache hits. Write-new-file-and-swap on cache update; mmap-fallback to read-into-memory where mmap is unavailable. (06-runtime, 11-persistence.)
+
+24. **Architecture set as constitutional document.** The eleven sections in `docs/architecture/` are authoritative; phase docs cite them. Phase docs propose changes to the architecture set; if accepted, the set is updated and phase docs anchor to the updated section. The decisions log (this file) records material architectural changes going forward. (00-index, 10-decisions-log.)
+
+**Alternatives considered, then rejected**:
+
+- *Continue piecemeal phase work without consolidation.* Audit identified compounding inconsistencies; rejected.
+- *Full top-down architectural revamp without an audit first.* Higher risk; the audit gave information to make targeted decisions; consolidation rather than revamp was sufficient.
+- *Op-shape B (newtype `Op` + collapsed registry).* Cleaner uniformity but loses pattern-matching ergonomics for primitives (the common case in algebraic rewrites); user chose A after weighing the trade.
+- *Op-shape D (flat enum with all ops).* Reconsidered late in the design pass; rejected because the open-registry property for fused ops is genuinely valuable for long-term automation and downstream contributions.
+- *Reference backend as distinguished oracle.* Replaced with per-kernel `PrecisionGuarantee`; same correctness anchor without the backend-special-status awkwardness.
+- *Opt-out telemetry by default.* Rejected; legal exposure (GDPR/CCPA), trust costs, architectural-alignment costs outweigh data benefit. First-use prompt captures most of the "people who don't care" segment.
+- *Server-side cached optimization plans aggregated by fuel-the-project.* Rejected; infrastructure cost, versioning headaches, hardware-fingerprint variability, trust boundary. Replaced with community-distributed caches alongside model files (sibling-file convention; HF Hub / GitHub auto-discovery).
+- *e-graph saturation as the primary optimizer engine.* Rejected; performance characteristics unsuitable for per-realize hot path. Possible offline rule-discovery tool. Declarative + callable rule patterns serve the optimizer's needs.
+
+**Implications going forward**:
+
+- Phase work re-anchors to the architecture set. Phase 7.6 (FusedOpRegistry) implementation now follows architecture v1.0's commitments rather than the original Phase 7.6 design doc.
+- The decisions log becomes load-bearing — every material architectural change going forward gets a log entry.
+- The 24 decisions captured here form the baseline; future decisions are documented against this baseline.
+- Implementation work (in code, in phase docs) is sized against the architecture's commitments, not against earlier inconsistent intermediate states.
+
+**Related artifacts**: the cross-thread architectural audit that triggered this consolidation (doc `docs/architecture-audit.md`, removed 2026-06-20 as superseded — its Q-A/Q-B/Q-C/Q-E resolutions are folded into the sections + this entry; Q-D, where cross-cutting types live after the fuel-core fission, remains an open question intrinsic to that future phase); session memory entry `project_architecture_doc_set_v0_2.md` (initial drafting state); `project_phase_7_6_paused_for_audit.md` (the in-flight phase work that paused for the audit).
+
+---
+
+## 2026-05-09 — Fused-op registry crate-split clarified
+
+**Sections affected**: 03 (IR).
+**Phase / PR**: Phase 7.6 step 1 implementation, commit `408ff57a` on `feature/storage-unification`.
+**Bumped to**: 03 v0.2 → v0.3.
+
+**What changed**: clarified the fused-op registry's cross-crate split. Architecture v1.0 §03-ir's "What lives where" table already named the split correctly ("fuel-graph (metadata) + fuel-storage (BackendImpl payloads)"), but `docs/fused-op-registry.md` v2 wrote the type-shape as a single `FusedOpEntry` struct in `fuel-graph` carrying a `SmallVec<[(BackendId, BackendImpl); 4]>` field. That doesn't compile: `BackendImpl` carries `KernelRef`, which lives in `fuel-storage`, and `fuel-storage` already depends on `fuel-graph` (not the reverse). Step-1 implementation surfaced the contradiction. Resolution: graph-side metadata (id, name, family, pattern, decompose, backward, shape/dtype rules) lives in `fuel-graph::registry::FusedOpEntry`; kernel-side payloads (`BackendImpl`, `CostEstimate`, `PrecisionGuarantee`, `KernelRevisionHash`) live in `fuel-storage::fused::FusedKernelRegistry`; the two halves are joined by `FusedOpId` at runtime. `docs/fused-op-registry.md` bumped to v3 to match. No architectural commitment changed — only the implementation-side rendering of an existing commitment.
+
+**Why**: the dependency graph forces the split. Putting the registry entry in `fuel-graph` is right (rule code + lowering rules need access to `decompose` and `pattern` callables), but `KernelRef` cannot reach `fuel-graph` without inverting an existing crate dependency. A single struct in either crate fails the architecture's "metadata + payload" partition.
+
+**Alternatives considered**:
+
+- *Move the whole registry to `fuel-storage`.* Rejected — rule code in `fuel-graph::opt` needs `decompose` and `pattern`, and `fuel-graph` cannot import from `fuel-storage`.
+- *Add a third crate `fuel-fused-registry` that both depend on.* Rejected — the metadata side genuinely belongs with the graph (next to `Op`, the lowering rules, the autograd backward dispatch); only `KernelRef` forces the split. A third crate would create artificial fragmentation.
+- *Generic `FusedOpEntry<I = ()>` parameterized by impl type.* Rejected — the fuel-graph-side entry never carries impls (it can't), so the type parameter is always `()`; trait-objects or unit-types add complexity without buying anything.
+
+**Implications going forward**: future fused-op migrations (Phase 7.6 step 4) register the metadata-side entry in `fuel-graph::registry::<op>::entry()` and the kernel-side `BackendImpl`s in `fuel-storage::fused::FusedKernelRegistry::register(id, backend, impl_)`. The `register_fused!` macro proposed in step 6 now spans both crates and does the join by id. Step 9's binding-table planning-time refactor reads from the kernel-side registry by id when resolving `KernelRef`s.
+
+**Related artifacts**: commit `408ff57a` (Phase 7.6 step 1); `docs/fused-op-registry.md` v3; session memory entry `project_phase_7_6_step_1_shipped.md`.
+
+---
+
+## 2026-05-22 — Planning-surface reconcile pass + bridge-retirement trajectory recorded
+
+**Sections affected**: none (architecture set unchanged). ROADMAP + session-prompts + memory cross-references updated.
+**Phase / PR**: organizational cleanup — no code.
+**Bumped to**: no section version bumps. This is a *cross-reference* decision, not an architecture-set change.
+
+**What changed**: a "Current frontier" stanza, a "Recently shipped (last 30 days)" pointer, and a "Next 1-3 sessions" priority list were added to the top of `ROADMAP.md`. Phase 7.5 work item B2, Phase 7.6 steps 1-3 + 6 + partial-9, were updated from `[ ]` to `[x]` / `[~]` to reflect the shipped/in-progress states already recorded in memory. A new Phase 7.6 step 9c subsection captures the typed-storage-retirement audit summary and adds a bridge-retirement-trajectory subsection that maps the path from this session's `VulkanBackendDevice` bridge to the architecture v1.0 destination (graph-level `Op::Copy` / `Op::Alloc`, dispatch-erased `Device` tag, retired `DynBackendStorage` trait). 10 session prompts whose work has shipped were moved to `docs/session-prompts/shipped/` with a README explaining the archive policy; 3 active prompts remain in the top-level directory (`baracuda-cutlass-alpha-13-integration.md`, `fill-op-primitive-set.md`, `onemkl-v0-2-followups.md`).
+
+**Why**: through May 2026 the planning surfaces drifted apart. ROADMAP entries for Phase 7.5 / 7.6 were drafted before the architecture set existed; many sub-tasks completed and were tracked in memory rather than reflected back into ROADMAP. Multiple "Phase" numbering schemes nested (ROADMAP Phase 7.6 / audit Phase E.3 / bridge-retirement Phase 2-7) made the "you are here" arrow invisible — an LLM session had to reconstruct current state from ~3 audit memos + the in-flight memo every time. The user surfaced the drift; the answer was *use the existing planning surfaces better* rather than create a new central plan (per the [02-layers](02-layers.md#stopping-rule-for-new-crates) stopping rule applied to planning artifacts).
+
+**Alternatives considered**:
+
+- *Create a new top-level "master plan" doc.* Rejected — duplicates ROADMAP's role and violates the stopping rule.
+- *Defer the reconcile until Phase 7.6 ships.* Rejected — the drift is actively costing context-reconstruction time per session; the reconcile is cheap and pays back immediately.
+- *Delete shipped session prompts rather than archive.* Rejected — historical record of *why* a session was framed a certain way is useful when revisiting decisions.
+
+**Implications going forward**:
+
+- The "Current frontier" stanza is the new "you are here" surface; update at session end. One-line maintenance per session.
+- Each shipped session prompt's archive in `shipped/` documents its corresponding `project_*_shipped.md` memory entry; cross-referencing is by filename / phase number.
+- Bridge-retirement trajectory under Phase 7.6 step 9c is now the authoritative map of what code dies when. Future sessions touching the typed-storage / `Device` / `DynBackendDevice` surface should consult that section before writing new bridge-shaped code.
+- The four [01-identity enforcement-check questions](01-identity.md#how-this-identity-is-enforced) become the per-session architecture-alignment gate: every active workstream should be runnable through them at session start, with the result recorded in the session prompt.
+
+**Related artifacts**: this session's `ROADMAP.md` edits; `docs/session-prompts/shipped/README.md`; memory entries `project_phase_7_6_step_9c_parity_audit.md` (updated this session) and `project_vulkan_v3_fanout_shipped.md` (updated this session) for the Vulkan Device-wiring follow-ups.
+
+---
+
+## 2026-06-08 — Model interchange architecture established
+
+**Sections affected**: 13 (interchange, new), 02 (layers), 00 (index).
+**Phase / PR**: design pass — no code.
+**Bumped to**: 13 established at v0.1, refined same-session to v0.2 (StableHLO promoted to import + export; *representation ≠ op* disposition framing); 02 v0.2 → v0.3; 00 index updated (new section 13 row + cross-link map).
+
+**What changed**: established the model import/export architecture as new section [13-interchange](13-interchange.md). The core commitments: (1) external formats decompose along two *independent* axes — weight payload and graph payload — so interchange splits into weight interchange and graph interchange, reused at different rates; (2) the base map ([03-ir](03-ir.md)) is the single hub — fuel's primitive `Op` vocabulary *is* the interchange vocabulary, no second neutral IR; (3) the native on-disk graph format is **not new** — it reuses [11-persistence](11-persistence.md)'s base-map serialization and DAG-format-version machinery, shipped standalone with weights external; (4) crate structure is three core+leaf tiers — format (`fuel-formats` + IR-free `fuel-format-*`), interchange (`fuel-interchange-weights` + `fuel-interchange-graph` cores + per-format `fuel-format-interchange-*` binding leaves), model (`fuel-model-core` registry + `fuel-model-*`) — with the per-format node↔weight binding as the only format-local glue; (5) the model registry uses link-time distributed registration (`inventory`/`linkme`); (6) high-demand models are split into their own crates now, the long tail extracted lazily; (7) host-language source is ingested by *tracing* (which collapses into the graph-import path), while a dev-time `fuel-codegen` scaffolder emits draft parametric `fuel-model-*` crates from source AST, sharing the graph-interchange op-map.
+
+**Why**: the user wants fuel to read/write models from/to as many external formats as practical, and to stop hand-coding each new architecture from scratch. A design dialogue established that the popular "four distribution categories" framing (HF source / ONNX-IR / TorchScript-GGUF / JIT-codegen) conflates weight+tag formats with graph formats and miscategorizes JIT/codegen (which fuel *is*, not ingests). Re-deriving the taxonomy around the weight⊥graph axes — and grounding it in fuel's existing base-map and persistence commitments — produced a structure where most of the "weight side" is already built (`fuel-formats` + the architecture zoo) and the genuinely new work is the graph op-mapper plus a registry.
+
+**Alternatives considered**:
+
+- *One fused weight+graph interchange crate.* Rejected — it couples the IR-free format tier to `fuel-graph` and breaks the "safetensors-only consumer pulls almost nothing" guarantee. The parse/map seam keeps the format tier IR-free.
+- *A second neutral IR for interchange to map into.* Rejected — the base map already is the hub; a second intermediate adds a translation hop and a vocabulary to maintain for no gain.
+- *A separate native DAG distribution format.* Rejected — duplicates [11-persistence](11-persistence.md)'s base-map serialization; the base map is already hardware-independent and shippable, so the interchange format reuses it.
+- *Big-bang split of all ~65 existing models into per-model crates up front.* Rejected against the [02-layers stopping rule](02-layers.md#stopping-rule-for-new-crates) as a speculative split; high-demand models are pre-split (near-certain consumers), the tail stays lazy.
+- *Static-AST parsing of host-language source as the import mechanism.* Rejected — a model's compute graph is a runtime property (depth/branches resolve from config at instantiation), so static parsing yields a scaffold, not a correct graph. Tracing is the correct automatic path and it *is* the graph-import path; static AST is reserved for the scaffolder's draft output.
+- *TorchScript / TensorRT `.plan` as interchange targets.* Rejected — TorchScript is deprecated upstream and unparseable outside libtorch; `.plan` is a kernel-baked non-portable engine. Import the source (ONNX) instead.
+
+**Implications going forward**:
+
+- The prerequisite structure is the **tier seam + registry** (the interchange cores, the IR-free format tier, `fuel-model-core` with `inventory`), justified now because the importer and scaffolder are real consumers. The per-model crate explosion rides the scaffolder and lazy extraction, *after* one importer validates the seam — it is not a precondition.
+- ONNX is the flagship import+export target; `.pt2` (Core-ATen) and **StableHLO (import + export via MLIR FFI — the JAX/TF/XLA convergence point, and the only clean path to JAX)** follow; weight formats reuse the existing `fuel-formats` parsers plus the model registry.
+- The interchange importer follows a **disposition model** (*representation ≠ op*): a source op maps to a primitive, a decomposition, a fused op, an **import-time lowering** (control flow → predication/unrolling, dynamic shape → specialization), or **another Fuel layer** (multi-output bundles, scheduler, weight-interchange quant). Only constructs with no graph representation (unbounded data-dependent side-effecting loops, unknown `custom_call`) hard-reject. The worked example + Fuel completeness audit is `docs/interchange/stablehlo-to-fuel-op-map.md` (119 StableHLO ops; ≈100 covered/handled; gaps = sort/top-k, pooling, FFT, inverse-trig, product-reduce — add only under real consumer pressure). The `L` import-lowering toolkit is shared across ONNX / ATen / StableHLO importers.
+- The former `fuel-onnx` IO-layer placeholder ([02-layers](02-layers.md)) resolves into `fuel-format-onnx` (parse) + `fuel-format-interchange-onnx` (map).
+- Implementation sequencing, format dossiers, Rust-crate landscape, and caller-migration tranches live in the migration plan (`docs/session-prompts/model-interchange-import-export-plan.md`), per the set's phase-doc convention.
+
+**Related artifacts**: [13-interchange](13-interchange.md) (new section); `docs/session-prompts/model-interchange-import-export-plan.md` (migration plan); this session's [02-layers](02-layers.md) v0.3 revision and [00-index](00-index.md) edits.
+
+---
+
+## 2026-06-08 — Runtime-snapshot persistence artifact (L3); save-all-activations rejected
+
+**Sections affected**: 11 (persistence), 13 (interchange — one-line cross-link).
+**Phase / PR**: design pass — no code.
+**Bumped to**: 11 v1.0 → v1.1.
+
+**What changed**: added a third, optional persistence artifact — the **runtime snapshot** — capturing designated durable runtime state (KV-caches, optimizer state, producer-marked long-lived intermediates) so a process can *resume* a live computation. Framed the full save surface as three layers: **L1 model** (base map + weights; the native `.fuel` artifact), **L2 + plan** (the optimization cache; hot-load by skipping optimization), **L3 + snapshot** (resume live state). "Save with vs without the plan/runtime state" is *which sibling artifacts a caller writes*, not a flag inside a monolithic file.
+
+**Why**: a user requirement to save "everything in the graph including in-flight data," with an explicit question of whether saving *all activations* would make hot-load launch faster. Analysis: it would not. Input-dependent activations are invalid across launches (a new input can't reuse them; if the input is identical, cache the output). Reloading large activations is bandwidth-bound at every disk→host→device hop while recompute stays on-device — the same trade that makes gradient checkpointing recompute rather than store. The real launch-speed levers (mmap weights, plan cache, lazy `KernelRef`) already live in L1+L2. So the snapshot persists *designated durable state*, not the executor's full realized-node cache.
+
+**Alternatives considered**:
+
+- *Save every realized activation for fastest hot-load.* Rejected — no launch-speed gain (bandwidth-bound reload ≥ on-device recompute; input-dependent activations unreusable) and large disk cost.
+- *Merge model + plan + snapshot into one file.* Rejected — divergent lifecycles (weights shared everywhere, plan hardware-dependent, snapshot run-dependent); merging forces re-shipping weights when the plan changes and over-invalidates. Sibling files, per the existing 11-persistence decision.
+- *Drop the snapshot concept (leave durable state to app code).* Rejected — KV-cache / optimizer-state checkpointing is a real serving/training need; a defined artifact + invalidation is worth the architecture line.
+
+**Implications going forward**:
+
+- The genuinely launch-relevant precompute case (input-independent derived values not already constant-folded — e.g. dequantized weights) is an optional **derived-weights** variant of the *model* artifact, not an activation snapshot.
+- F2 (Serde on Fuel-IR) implements L1 first; L2 is the existing cache design; L3 lands when a resumable-state consumer (serving KV-cache persistence or a training checkpoint) needs it.
+
+**Related artifacts**: [11-persistence §Runtime snapshots](11-persistence.md#runtime-snapshots-resuming-designated-durable-state-l3); [13-interchange](13-interchange.md); `docs/session-prompts/model-interchange-import-export-plan.md`.
+
+---
+
+## 2026-06-13 — Baseline Judge data is bundled in-package (supersedes opt-in download for the baseline path)
+
+**Sections affected**: 06 (runtime — Local Judge baseline initialization), 08 (pattern-harvest — telemetry posture, clarification only).
+**Phase / PR**: design decision — no code yet.
+**Bumped to**: 06 (minor, when the section is next revised); recorded here ahead of the section edit.
+
+**What changed**: the original plan (decision 20, "Local Judge baseline initialization") had a fresh install *optionally download* a community-aggregated baseline profile for its hardware fingerprint. This reverses that for the baseline path: **a baseline Judge dataset is bundled in the Fuel package itself** so a fresh install starts with empirical priors with no network access required. Local profiling + the new online/idle-time measurement path (see ROADMAP §"Online Judge cost feedback" / the expected-vs-real dispatch check) still refine it on the user's exact hardware over time. Telemetry **upload** stays strictly opt-in (unchanged); this decision is about what ships *down* in the box, not what flows *up*.
+
+**Why**: Fuel should "just work" for almost all users, including those with no/limited internet access (rare in the U.S., common in places like Nigeria). An opt-in *download* of baseline data would make a Fuel-based program effectively unusable offline (the cold-start cost model would be static-only). Bundling the data removes that dependency. The user explicitly accepted the change from the earlier opt-in-download plan to achieve broad usability.
+
+**Relationship to the "not bundled hardware-specific cache distribution" non-goal (09)**: no conflict. That non-goal rejects auto-distributing the *optimization cache* (a plan keyed to an exact hardware fingerprint, where a mismatch is silently wrong). Baseline *Judge data* is different: it is empirical priors across hardware classes used only to *seed* the local Judge before local measurement refines it — a starting point, not an authoritative hardware-locked plan. It degrades gracefully (a near-miss hardware class is still a better prior than static-only) rather than being silently wrong.
+
+**Open sub-questions** (for when this is built): which hardware classes to ship, the size/compression budget of the bundled dataset, and whether it is a default feature that can be disabled for minimal builds. The design-discussion conclusion that online/idle-time measurement may make generic baseline data "largely unnecessary" stands as a reason to keep the bundled set modest — it accelerates cold start, it is not the long-term source of truth.
+
+**Related artifacts**: ROADMAP §"Post-wipe resume addendum" follow-ups (online Judge feedback; expected-vs-real dispatch check); [06-runtime](06-runtime.md) §Local Judge baseline initialization (to be revised when implemented).
+
+---
+
+## 2026-06-13 — Lifecycle overview section (14) + terminology reconciliation
+
+**Sections affected**: new 14 (lifecycle); 00 (index — added to the set table + reading-order spine).
+**Phase / PR**: doc — no code (one code rename proposed, not yet applied).
+**Bumped to**: new section 14 v0.1.
+
+**What changed**: added [14-lifecycle](14-lifecycle.md), the first document that narrates the whole path end to end (load → build graph → plan → realize → inference/training loop) with a single canonical glossary. It is the orientation/spine doc; 00-index's reading order now points to it first. The set was previously decomposed strictly by concern, so no document walked the full flow — which let terminology drift.
+
+**Why**: a working session surfaced a concrete misunderstanding (an implementation detail, the realize-internal worker thread, was mistaken for a pipeline stage). Aligning users/developers/agents needs one shared, code-accurate narrative + fixed vocabulary.
+
+**Terminology reconciled** (the overview is canonical):
+
+- The realize-internal worker that lowers planned nodes to WorkItems — code symbol `compiler_thread_body`, previously called the "compiler thread" — is renamed **"work-item producer"** (it produces `WorkItem`s; it does not compile machine code and is not a pipeline stage). The code rename of `compiler_thread_body` → `work_item_producer` is approved but not yet applied. `compile_plan` keeps its name, leaving exactly one "compile" in the vocabulary.
+- "the plan" is canonical for the `ExecutionPlan` (a.k.a. "optimized form / optimized DAG").
+- "runtime selector (Picker 2)" is canonical for the surface 06 calls the "route picker" and older code calls the "Router"; "plan-time ranker (Picker 1)" is the `compile_plan` ranking pass.
+
+**Today-vs-intended captured in 14** (so the overview isn't read as fully-built): eager-copy load (not mmap-resident); no load-time planning wired (warm runs per-forward); decode re-plans per token (Stage 5 memoization unbuilt); binding-table lookup happens in the work-item producer at realize time, not at plan-build time.
+
+**Related artifacts**: [14-lifecycle](14-lifecycle.md); [00-index](00-index.md) (table + reading order); the work-item-producer rename is queued against `fuel-dispatch/src/pipelined.rs:734`.
+
+---
+
+## 2026-06-14 — Major redirection: "the plan IS the graph" (multi-path optimization)
+
+**Sections affected (to be revised to match this entry)**: 03 (ir), 04 (optimization), 06 (runtime), 09 (non-goals), 11 (persistence), 13/02 (load vs import), 14 (lifecycle). This entry is the AGREED anchor; the section rewrites implement it. Until a section is revised, this entry wins.
+**Phase / PR**: design redirection from an extended owner design review (the 14-lifecycle doc surfaced that the built code had strayed from the intended architecture). Validated by a standalone frontier-pruning prototype (`C:/Projects/frontier-prototype`, not in the workspace).
+**Status of code**: most of the built optimizer/executor (per-node `AlternativeSet` + separate `ExecutionPlan` + per-node resolve + per-WorkItem dispatch) is a *staging post*, not the destination. Migration is staged so the system stays runnable throughout.
+
+**The core change**: the optimized graph and "the plan" are ONE structure, not two. There is no separate `ExecutionPlan` object; the graph itself, after optimization, is a **multi-path structure** carrying alternative routes that diverge and reconverge, with decisions localized to **branch points**, not every node.
+
+**The agreed decisions** (each reverses or extends prior architecture where noted):
+
+1. **The plan is the graph.** Optimization annotates/transforms the graph in place into a multi-path structure; the surviving N-best routes ARE the optimized model. (Revises 03/04's three-artifact "optimized form as separate annotation" framing toward a single evolving structure; base map = the unoptimized graph, retained as the portable artifact.)
+2. **Multi-path, decisions at branches.** Alternatives are real divergent/reconverging paths; decision points = branch points (few), not per-node. The built "every kernel-bearing node gets an AlternativeSet, resolved per node" over-generalized "decision point" and is the drift to undo.
+3. **The graph is the model, input-independent.** Built at load/import — NOT at `forward()`. Fully built (ideally optimized) before the first input. "No graph until forward runs" is a defect. Nodes need not own storage to exist.
+4. **Load vs import.** `map_from_file()` (or similar) LOADS a finalized native Fuel graph+storage (mmap'd). `from_gguf()`/`from_safetensors()`/HF etc. are IMPORTS (conversion → base map). The native `.fuel` format (L1) is the load path; everything else converts.
+5. **Finalize-to-disk is the default run mode, not a precondition.** Any in-memory model can be finalized to an mmap'd file — yielding fast reload, snapshotting, training-persistence, AND larger-than-RAM in one mechanism — but the base map runs before finalize. Write-back at explicit checkpoints (`msync`), never write-through-per-step.
+6. **Storage classes via "session index."** A node's lifetime/sharing class is inferred from its op (`Op::Const` → shared/weights; cache-write target → session-state with explicit override; else → transient), with multiple storages per node indexed by **session** for session-state. Weights are shared across sessions (not session-indexed). Transient never persists and never crosses to the file, but DOES cross devices mid-realize (D2D) on multi-device paths. Shared written-back only if changed (training); session written-back only on snapshot.
+7. **`optimize_graph` = pathfinders + rankers + optimizers, run lock-step.** Pathfinders add candidate paths (algebraic reshaping; dependency tracking for parallelism; windowed scanner over fused + primitive ops). Rankers measure each path: **timing** (the Judge — see #8), **precision** (digits), **accuracy** (ULP/rounding/monotonicity), **memory** (per-tier vector, see #10). Optimizers merge/discard sub-optimal paths (per-op tolerance; duplicate-path convergence; path-timing) and never strand the last path for a (device,backend) nor touch a path in an active inference/training cycle. Tie-break order: precision → accuracy → memory.
+8. **Bounding the path explosion (prototype-validated).** Naive per-device Pareto pruning EXPLODES (frontier passes 3000 by region 14 of 128). The bound comes from two complementary things: **(a) the right axes** — ONE central time metric (median/average for throughput, p99 for latency; **drop `t_min` as a selection axis** — "fastest best-case" is not a selection goal; the Judge measures the full distribution but the optimizer optimizes on one mode-selected metric), memory as discrete **tiers**, precision/accuracy as discrete levels → a naturally small (~100), FLAT, **lossless** frontier with no cap; and **(b) a crowding-distance-capped beam** (NSGA-II style, per ending-device) as a hard backstop — keep≈32/device matches the no-cap optimum on all tested runtime queries, and bounds even adversarial continuous-axis cases. Per-device bucketing keeps multiple paths per device (time/memory tradeoffs; multi-device-spanning paths) and never strands a device.
+9. **Runtime picks within the surviving frontier by live telemetry** (device load, free memory tier) at branch points — this is competitive edge #3 (top-N route preservation) realized structurally. Kernel-variant choice is largely baked at optimize time; device/path choice adapts at runtime.
+10. **Three-tier memory (disk / host / device) tracked as a vector, not a scalar.** A path has separate host-RAM and device-VRAM (and disk) footprints; dominance and runtime selection are per-tier (which tier is the binding constraint decides which path wins). The plan IS the prefetch schedule across tiers: disk→RAM (mmap demand-paging + `madvise`) for larger-than-RAM, RAM→VRAM (H2D ahead of frontier) for larger-than-VRAM.
+11. **`Storage` must support mmap-backed zero-copy views** (paged), not only owned buffers — prerequisite for larger-than-RAM and the native format. Today's eager-copy load defeats this and is to be replaced.
+12. **Pre-resolving kernels is an optional post-optimize step** (startup-time vs TTFT trade): resolve all `KernelRef`s up front to take the lookup off the hot path, or resolve lazily for fastest first-token.
+13. **Terminology** (per [14-lifecycle](14-lifecycle.md)): the realize-internal worker is the **work-item producer** (code rename of `compiler_thread_body` pending); "the plan" = the optimized graph; "runtime selector (Picker 2)" = the route picker; `compile_plan` keeps its name as the one "compile."
+
+**Why** (the bet, restated): a single multi-path graph optimized offline by pathfinders/rankers/optimizers, dispatched as sequences between few decision points with runtime adaptation per request, is the substrate the five competitive edges actually need — not a per-node alternative side-table resolved one op at a time (which the owner correctly judged "almost eager with a queue"). The prototype shows the feared blowup is avoidable and cheap (~100 paths) with the right axes + a backstop cap.
+
+**Prototype evidence**: `C:/Projects/frontier-prototype` — naive Pareto explodes @region 14 (all seeds); coarse quantization / collapsing min/max only delay it; recommended axes (1 central time + 3 memory tiers + discrete precision/accuracy) → flat ~100-path lossless frontier; capped beam keep=32/device → matches no-cap optimum on all 5 runtime queries; adversarial backstop holds.
+
+**Open items** (to settle during the section rewrites): the exact `keep` to standardize; how a node declares its storage class (inference-from-op + explicit override is the lean); the disk-spill traversal's locality requirement for `optimize_graph`; and the staged-migration sequence against the runnable system.
+
+---
+
+## 2026-06-20 — Adaptive runtime fusion: the recipe principle, two-tier extensibility, and the Fuel-strategist / backend-synthesizer JIT loop
+
+**Sections affected (revised to match this entry)**: 03 (ir), 04 (optimization), 05 (backend-contract), 08 (pattern-harvest), 09 (non-goals), 14 (lifecycle) — MAJOR; 01 (identity), 02 (layers), 06 (runtime), 11 (persistence), 12 (multi-output), 00 (index) — MINOR. This entry is the AGREED anchor; the section edits implement it. Until a section is revised, this entry wins.
+**Phase / PR**: design pass from an extended owner design review on the kernel-boundary program (branch `feat/kernel-contracts-dlpack`). No code yet; this sets the destination the FKC declarative-fusion spec (`docs/specs/fkc-fusion-patterns.md`) and the telemetry plan (`docs/session-prompts/baracuda-telemetry-plan.md` §9) implement.
+**Bumped to**: 03 v0.4 → v0.5, 04 v0.5 → v0.6, 05 v0.4 → v0.5, 08 v0.2 → v0.3, 09 v0.2 → v0.3, 14 v0.5 → v0.6; 01 v0.2 → v0.3, 02 v0.4 → v0.5, 06 v1.2 → v1.3, 11 v1.2 → v1.3, 12 v1.0 → v1.1, 00 v1.0 → v1.1.
+
+**The core change**: Fuel acquires an **adaptive runtime-fusion loop** — it detects fusion opportunities a model author never wrote, asks a backend (Baracuda first) to JIT-synthesize a kernel for them during idle time, and adopts the result cost-guided — *without* surrendering the constitution ("the optimizer that reads the DAG is where the intelligence lives; backends advertise but never make strategic decisions"). Making that safe required pinning down the **recipe principle** and a **two-tier extensibility model**, and reconciling several blanket "frozen at startup" claims that predate the loop. Eight decisions:
+
+1. **The recipe principle (G1).** Every fused op carries a primitive recipe in **two inverse directions**: a `decompose` (fused → primitive subgraph; *lowers* it onto the base map) and a `pattern` (recognize that primitive subgraph; *re-fuse*). **Both are mandatory.** A fused op with no recipe is an **opaque island** — invisible to base-map analysis (the co-occurrence / missing-fusion telemetry can't see across or inside it) and impossible to re-fuse. The two halves are the same data viewed in opposite directions (the DecompositionMap / OptimizationMap derive one-to-one from the registry, per [04-optimization](04-optimization.md)).
+
+2. **`decompose` is TOTAL + never-panic + primitive→self (G2).** `decompose` never `panic!`s (the never-panic constitution rule). A **primitive decomposes to itself** — the recursion's fixpoint, already the identity form `decompose = |_g, id, _p| id` at `fuel-graph/src/registry.rs:823`. The **base map is the fixpoint of `decompose` over every node** (lower until `decompose(x) == x`; a primitive is just a node no lowering rule fires on — exactly the `optimize_graph` rewrite model). A panicking `decompose` is **always a bug**: the op is either a true primitive (must return self) or a non-primitive missing its recipe (a bug / basis gap), distinguished by **basis membership, never by the return value**; a non-basis op that fails to decompose is a **surfaced opaque-op gap** (a base-map flag → the missing-fusion / inventory telemetry), never a crash and never silently masquerading as primitive. This is **load-bearing for optimization *itself***, not just JIT: optimization = lower-to-base-map + find-best-cover, so an op that won't decompose *breaks the optimizer*, not merely a downstream feature. The three current panicking decomposes (`nf4_matmul.rs:120`, `flash_attn`, `selective_scan`) are bugs to fix, not a permanent category. A model's recipe (`decompose` + `pattern`) **always ships with the fused op** — never deferred "until intermediates fit" (that produces an opaque island).
+
+3. **The primitive basis is build-time-closed (G3).** The primitive `Op` set is a compile-time Rust enum (`fuel-graph/src/lib.rs`); there is **no generic opaque / `Custom` node** in the lazy graph. So an externally-supplied (provider / JIT) op **cannot become a new primitive at runtime**. It must either **decompose into the existing primitive basis** (and carry a `pattern` to replace that sequence), or — if it needs a primitive Fuel lacks (e.g. a higher-order `Scan` for SSMs) — prompt a **Fuel-side, build-time `Op`-enum extension** the provider cannot do itself. The primitive vocabulary is a **hard shared contract** with providers. JIT adds kernels / recipes *over* existing primitives, never new primitives.
+
+4. **Two-tier runtime extensibility (G4) — the reconciliation of the "frozen at startup" claims.** The blanket non-goals ("fused-op registry / OptimizationMap populated at startup, frozen thereafter; no runtime extensibility") were each motivated by an **untrusted-user** security / stability surface. They are re-scoped into a three-way split:
+   - **Build-time-closed (stays):** the primitive `Op` enum (per G3) and **untrusted user-installable rules** (the [09-non-goals](09-non-goals.md) rejection holds — arbitrary user code in the optimizer is still out).
+   - **Tier 1 — already runtime-extensible:** the **kernel binding table** (implementations). `extend_global_bindings` (`fuel-dispatch/src/dispatch.rs:5098`) write-locks `OnceLock<RwLock<KernelBindingTable>>`, appends (append-only, multi-sibling `SmallVec`), re-runs `finalize()`, and calls `bump_topology_generation()` to invalidate cached routes. JIT-ing a kernel for an **existing op identity** lands here today; this was never the frozen part.
+   - **Tier 2 — the new goal:** trusted, **Fuel-orchestrated, cost-gated** runtime registration of a **new fused-op identity** (the fused-op *metadata* registry — `OnceLock<FusedOpRegistry>`, dense Vec, closed `FusedOpParams` enum, bare-`fn`-pointer entries — becomes runtime-updatable: append-only, **stable never-reused** `FusedOpId`s). The **mechanism is the declarative form**: a runtime fusion can *only* be declarative (pattern + recipe + shape/dtype/cost carried as **data**, run by generic interpreter fns), because you cannot ship Rust `fn` pointers or add enum variants at runtime. So implementing the **stubbed declarative pattern engine** (`PatternKind::Declarative => false` at `fuel-graph/src/opt.rs:434`) is the **prerequisite** for Tier 2 — one generic `FusedOpParams::Declarative(Arc<Recipe>)` variant + generic interpreters + the append-only registry.
+
+5. **Missing-fusion telemetry (G5).** Today there is **no** missing-fusion signal: Fuel can see fusions it *performed*, not fusions it *wanted-but-lacked* ("no rule fired" is identical across every primitive node, `opt.rs:256-273`). It needs a **new graph-layer hook** and depends on the base emission seam (`structure_key` is a 13-line stub; no `DispatchRecord` is emitted yet). Sequencing (canonical in [08-pattern-harvest](08-pattern-harvest.md) + `baracuda-telemetry-plan.md` §9): **closed-world `FusionMissRecord`** (a recognized fusion-eligible chain realized as N primitives because the kernel was absent — reason `NoBackendKernel`, against **known** `FusedOpId`s) is the v1 **headline**, built FIRST (its consumer — append a `BindingEntry` — already exists, Tier 1). **Open-world `SequenceRecord{fused_as: None}`** (a frequent realized op chain matching **no** known identity — discovered by *observation*, not subgraph *enumeration*) is **deferred**, because its consumer is the Tier-2 runtime declarative registration. We never enumerate the subgraph space and never search for a whole-model fusion.
+
+6. **Whole-model / megakernel is a real but NARROW technique (G6).** Supported when profiling justifies, but the **last / highest-risk target, never the default**. It wins *something* over even an ideal CUDA Graph (inter-kernel GPU scheduling bubbles + cross-boundary software pipelining) and removes host-round-trip risk, and *can* host multiple strategies via a persistent-megakernel. But the benefit curve **turns over** because of **fixed launch geometry** (one grid/block per launch), **kernel-global register allocation** (the worst region's register footprint is imposed on every region → bandwidth-bound regions are forced to the compute region's low occupancy; internal sub-kernels do **not** fix this — the register file is partitioned at launch by the kernel's static max), and **per-shape JIT/specialization combinatorics**. "Bigger fusion = better" is **not monotonic**. Captured-run replay (CUDA Graphs / pre-recorded command buffers, per [11-persistence](11-persistence.md)) is the cheaper step below it that already captures most of the launch-overhead win without fusing compute.
+
+7. **The closed-loop adaptive optimizer (G7).** The synthesis. The **base map** (guaranteed total by G2) is the substrate both the optimizer and the JIT loop read. **Fuel is the STRATEGIST**: it chooses *which* sub-base-map regions to request (sending **partial** base maps, never the whole map), controls *when* (idle-time, host- and all-device resource-aware — Fuel is the only layer that sees the whole machine), and makes the cost-guided **adopt / reject** call. **A backend (Baracuda) is the SYNTHESIZER**: it builds the best kernel for a Fuel-*chosen* region, applying hardware knowledge *within* it — Fuel choosing the region **is** the fusion decision; **no backend-side opportunity-finding** (the constitution holds; this is not backend-internal fusion, per [09-non-goals](09-non-goals.md)). The loop is **explore/exploit**: **co-occurrence telemetry** (frequency-counted realized chains) is the **exploration prior** that orders which regions to JIT first; empirical **"winning"** (a kernel/path entering an optimized plan under cost-guided selection) is the **exploit posterior** — ground-truth fitness — and **win-rate flattening is the STOP signal** (the benefit-curve knee) that bounds JIT requests. Neither replaces the other.
+
+8. **Kernel-cache pruning (G8).** Prune **rarely** — likely not at all initially. When forced, evict kernels that **lose across *every* model** first ("loses no matter which model considers it" = a never-useful proof). Gate eviction behind a **developer-set max-kernel-drive-space cap** — only evict under space pressure, so a kernel is never discarded while there is room (a currently-*shadowed* kernel that might win under a different cover, or in a different model, stays). Do **not** prune on a single model's losses — "winning" is relative to the current kernel set (shadowing). Canonical home: [11-persistence](11-persistence.md).
+
+**Why**: the kernel-boundary program (FDX + FKC) opened the door to backends that JIT-generate kernels for Fuel's specific needs. The natural consumer of the missing-fusion telemetry is exactly that loop. But the loop is only safe if (a) every op has a recipe so the base map is total (else the optimizer has blind islands), (b) the basis stays build-time-closed so providers can't smuggle in primitives, (c) the extensibility is split so the *trusted Fuel-orchestrated* path is enabled without opening the *untrusted user* path, and (d) Fuel keeps the strategy while the backend keeps the synthesis. The prior docs' blanket "frozen" language conflated trusted/untrusted and primitive/fused-metadata, blocking the loop on paper; this entry separates them.
+
+**Alternatives considered, then rejected**:
+- *Let the backend find fusion opportunities and JIT them autonomously.* Rejected — that migrates strategy into the backend, violating the constitution; Baracuda synthesizes a Fuel-chosen region instead.
+- *Send Baracuda the whole base map.* Rejected — wasteful and a strategy leak; Fuel sends partial, optimizable sub-regions, on Fuel's resource-aware schedule.
+- *Greedy "largest region that fits first."* Rejected — that optimizes launch-count (the least-valuable axis) and is the lowest-frequency, highest-compile-cost, highest-fit-risk target; order by frequency-weighted profitability (small repeated motifs first), with empirical winning as the ground-truth re-prioritizer.
+- *Treat a foreign black-box kernel as a new "primitive by declaration."* Rejected — there is no runtime primitive registration and no opaque node; a provider op must decompose into the existing basis or prompt a build-time basis extension.
+
+**Implications going forward**: (1) the **stubbed declarative pattern engine** is promoted from a Phase 7.6 convenience to the **prerequisite for the JIT loop** — it gates Tier-2. (2) The **total/never-panic `decompose`** standardization (fixing the three panicking decomposes + a typed contract) is promoted from the never-panic backlog to a **correctness requirement for the optimizer**. (3) The **closed-world `FusionMissRecord`** is the build-first telemetry piece; open-world co-occurrence is gated behind Tier-2. (4) Backends gain a **JIT-on-request** contract surface (Fuel sends a partial base map + budget; the backend returns a kernel + its FKC contract incl. `PrecisionGuarantee`); the route picker cost-gates adoption and the binding table ingests it. (5) Kernel-cache growth gains a **drive-space-capped, loses-everywhere** eviction policy.
+
+---
+
+## 2026-07-01 — FKC cost unification: register GPU capabilities + per-backend throughput (honest cross-device placement)
+
+**Sections affected**: 04
+**Phase / PR**: FKC cost unification Part A (`1acf3222`) + Part C (this change)
+**Bumped to**: 04 v0.6 → v0.7
+
+**What changed**: Two coupled fixes to the Layer-1 cost model that together make cross-device placement honest. **Part A** registers GPU `BackendCapabilities` (derived from the binding table) and the per-op cost functions for GPU backends, so `compute_static_costs` no longer *skips* an uncapped GPU candidate and leave it priced at zero. **Part C** replaces the backend-agnostic `1 FLOP ≈ 1 ns` prior in the composite-nanosecond figure with a **roofline over each candidate backend's throughput**: `composite_ns ≈ max(flops ÷ compute_throughput, bytes ÷ mem_bandwidth) + kernel_overhead_ns`, with `compute_throughput_flops_per_ns` / `mem_bandwidth_bytes_per_ns` added to `BackendCapabilities`. The placement DP reads the authoritative registered figure; the candidate rank (no caps in hand) uses a matching per-backend prior derived from the same constants. `kernel_overhead_ns` is never scaled, so Layer-2's measured latency (packed into overhead) is unaffected.
+
+**Why**: A concrete crash — a CPU-pinned realize spilled onto an *unseeded* GPU because the GPU candidate was priced at zero (Part A's bug) and, once priced, was still modeled at CPU throughput so it could never legitimately out-price the CPU (the gap Part C closes). The root cause was that "backends advertise capabilities/costs" (§constitution) wasn't actually wired into the FLOP→time conversion. This realizes the throughput refinement earlier drafts deferred to "Phase 1.5."
+
+**Alternatives considered**: *A reachability filter that prunes unseeded devices from placement.* Rejected — it hides the mis-pricing rather than fixing it, and forecloses seed-on-demand. *Storing the throughput on each `Candidate` / `CostEstimate`.* Rejected — 40+ field-explicit construction sites, and `bytes_moved` is also read raw for the VRAM tiers; resolving the rate from `candidate.backend` at the composite site is cleaner. *Calibrated per-device numbers.* Deferred — the priors are deliberately directionally-correct only; Layer 2 (Judge) supplies calibration.
+
+**Implications going forward**: (1) `BackendCapabilities` is now the single authoritative home for per-backend throughput; a real backend or the Judge can refine it per cell. (2) The composite figure is throughput-aware everywhere it is consumed (placement DP, candidate rank, dispatch-time selectors). (3) Part B (route *every* kernel's cost through its FKC contract so the FLOP/byte counts themselves are contract-sourced) is the remaining leg of the cost-unification program.
+
+---
+
+## 2026-07-02 — Fused-op Layer-1 cost composed from its decomposition (no zero sentinel)
+
+**Sections affected**: 04
+**Phase / PR**: Fused-op cost-from-decompose (this change); follows FKC cost unification Part A/C (`1acf3222` / `0e178b9b`)
+**Bumped to**: 04 v0.7 → v0.8
+
+**What changed**: A fused / synthesized op with no declared or measured cost registered a zero-cost sentinel (`fused_unknown_cost` for FKC-imported ops; the runtime-adopted path likewise), and a zero-priced candidate wins spuriously — the exact mis-pricing Part A fixed for GPUs, now recurring for every fused op that lacks a Judge cell. This adds a **Layer-1 default that composes the fused op's cost from its own `decompose`**: `flops = Σ` over the decompose subgraph's primitive nodes of their per-node Layer-1 FLOPs (arithmetically exact for algebraic fusions); `bytes_moved =` the fused op's own **boundary I/O** (declared inputs + final output — fusion elides the intermediates, so the *tight* estimate, not `Σ` intermediate bytes); `kernel_overhead_ns =` **one** launch overhead (the fused kernel launches once). It is an **optimizer-level default** — `fuel_dispatch::fused_cost::{cost_from_decompose, fused_layer1_cost}`, computed where the graph + `decompose` are both in hand, NOT inside the bare `cost(shapes, params, caps)` fn pointer (which has no graph). It fires **only for the sentinel** (identity fn-pointer compare, as `fill_unset_*` already does for the primitive `unknown_cost`): a fused op WITH a declared cost or a Judge measurement is priced by that, unchanged — so the layering is **measured › declared › composed-from-recipe › (never) zero**. The runtime-adoption path (`adopt_runtime_fused`) now stamps the same sentinel so runtime/JIT-synthesized fused ops (where sentinel-zero was most likely) benefit too.
+
+**Why**: The recipe principle (every fused op carries a total, never-panic `decompose` whose fixpoint is the primitive base map — 2026-06-20 decision) means the exact primitive-equivalent of every fused kernel is already known, and every primitive already has a Layer-1 cost fn. Composing those is a real, bounded number available immediately (no Judge data required) — the bridge "until the Judge can verify it during real runs." It is directionally safe under carry-forward placement: for algorithm-changing fusions (flash-attention trades recompute for O(n) memory) the decompose FLOPs are an approximation the Judge later refines *downward* — a missed win until measured, not an optimistic *irreversible* bad commit.
+
+**Alternatives considered**: *Populate a real cost fn at registration that closes over the decompose (spec shape B).* Rejected — the `cost:` field is a bare `fn` pointer that can't capture the decomposition map; it would need the same signature-widening the deferred Task-F trampoline needs. The use-site sentinel fallback (shape A) is zero registry churn. *A declared `cost:` expression as the default (Task F).* Kept as an optional Layer-1 *override* for authors who want to beat the composition's precision — this decision demotes it from prerequisite to refinement. *Loose `Σ decompose.bytes` upper bound for `bytes_moved`.* Available as a conservative fallback; the tight boundary-I/O estimate is used because every input is already in hand and it is closer to the true fused value.
+
+**Implications going forward**: (1) Every fused op — FKC-imported, static-registered, or runtime-adopted — now has a nonzero, directionally-safe Layer-1 cost the moment it exists; the zero-cost landmine is closed across the fused surface. (2) Task F (contract-declared `cost:` trampoline) is now an *optional* precision refinement, not a prerequisite. (3) A param-carrying interior primitive in a decompose prices at its shape-derivable floor under the v1 fold (`OpParams::None`); the Judge is the corrector, and a full `op_to_op_params` reconstruction is a possible follow-up if a consumer needs tighter interior pricing. (4) The fused-registry cost read is not yet consumed by the ranker's `compute_static_costs` (which prices primitives via the binding table); `fused_layer1_cost` is the accessor the fused-op cost consumer will call when it lands.
+
+---
+
+## 2026-07-03 — The three flagged `decompose`s resolved: NF4 + concrete-`k_len` flash recipes land; symbolic-`k_len` flash + SSM scan are documented basis gaps
+
+**Sections affected**: 04 (optimization) — MINOR (status note only); no core-claim change.
+**Phase / PR**: never-panic / recipe-principle backlog (G2). Branch `feat/kernel-contracts-dlpack`. Code: `fuel-graph/src/registry/{nf4_matmul,flash_attn,selective_scan}.rs`; parity + gap-posture tests in `fuel-core/src/lazy.rs`.
+
+**What changed**: The 2026-06-20 G2 entry (and CLAUDE.md, and 04) flagged "three current panicking decomposes (`nf4_matmul.rs:120`, `flash_attn`, `selective_scan`)." **First correction: they were not, in fact, panicking** — a prior G2 pass had already converted every panic to a self-return (the never-crash posture). So the residual work was never "stop the crash"; it was "supply the *recipe* so the base map isn't stranded with an opaque island" (the load-bearing-for-the-optimizer half of G2). That work is now done, per op:
+
+- **`nf4_matmul` → total primitive recipe.** `dequantize(w_packed, absmax) → matmul`, built with **no data-carrying `Const` and no device handle** (a `decompose` fn has neither): `Cast(U8→F32)` + `lower = wf − 16·⌊wf/16⌋` / `upper = ⌊wf/16⌋` nibble-unpack (exact for `1/16 = 2⁻⁴`), `Unsqueeze→Concat→Reshape` interleave to codes `[N, K]`, a **codebook lookup as an indicator sum** `Σᵢ LUTᵢ·relu(1−|c−i|)` (pure elementwise, exact because codes are exact small integers), broadcast per-block `absmax`, `Transpose`, `MatMul`. Parity test matches the fused CPU byte-kernel numerically.
+
+- **`flash_attn` concrete-`k_len` → total recipe; symbolic-`k_len` → documented gap.** `k_len` is `Option<DynScalar>`. `None` (vanilla) already decomposed. **`Some(Concrete(kl))` was static all along but returned self** (the `k_len.is_some()` short-circuit was too coarse); it now `Slice`s K/V to the live prefix and runs the SDPA recipe **bottom-right-aligned** — `q_pos_offset = kl − Sq` threaded through every causal / sliding-window / ALiBi band (`recompute_probs` + `alibi_bias` gained the offset param; the two existing callers pass 0, keeping the backward byte-identical). **`Some(Sym(_))` is a genuine registry-layer basis gap**: slicing to a *symbolic* length needs a primitive the basis lacks (`Op::Slice` carries a static `usize`; nothing materializes a `DynScalar` into a length-mask tensor inside a `decompose`, which never sees the per-realize `SymEnv`). The symbolic decode *oracle* is emitted one layer up by the optimizer's `decode_flash` arm, which **does** hold the `SymEnv` — so returning self here is correct-by-design, not a punt.
+
+- **`selective_scan` → the constitution's canonical basis gap (G3).** No recipe over today's `Op` basis is both total *and* numerically valid: the `O(seqlen)` unroll is an unbounded, un-re-fusable explosion (not a recipe), and the diagonal-SSM `CumSum` closed-form `h[t] = exp(a·D[t]) ⊙ cumsum_t(exp(−a·D[s]) ⊙ x[s])` **overflows** because Mamba's `a = −exp(a_log) < 0` makes `exp(−a·D[s]) = exp(|a|·D[s])` blow up — exactly why the kernel is chunked. Held as a never-crash surfaced gap; the precise ask to close it is a **build-time `Op`-enum extension** (a higher-order `Scan` / associative- or chunked-scan primitive), per G3.
+
+**The signature question (why no `Result`).** G2 demands never-panic but the DecompositionMap signature `fn(&mut Graph, NodeId, &FusedOpParams) -> NodeId` cannot fail. Resolution, consistent across all three: **returning self *is* the typed gap-marker.** The fixpoint driver (`opt.rs` `run_pass` / `LoweringRule::rewrite`) already treats `new_id == id` as "no progress" and records no remap, so the lowering loop **terminates** and the node is left as `Op::Fused` — a surfaced opaque-op gap an inventory pass can find. A primitive→self and a gap→self are byte-identical to the driver and distinguished only by **basis membership** (exactly G2's rule), so **no signature widening is needed** and none was done. The gap-posture test asserts termination + node-survival empirically.
+
+**Why (not force a lowering)**: the recipe is the *math oracle* + the substrate the optimizer covers; a wrong lowering (numerically-unstable cumsum) or an unbounded one (seqlen unroll) is worse than an honest surfaced gap — "partial-with-precise-gaps is valid; never force a wrong lowering."
+
+**Alternatives considered**: *NF4 codebook via `Const`-tensor + `IndexSelect`* — rejected: a `decompose` fn has no device handle to build a data-carrying `Const`, and it adds an integer-index dtype dependency; the indicator sum needs only confirmed elementwise primitives and is provably exact. *Generalize `recompute_probs` vs. inline a second SDPA for the offset case* — chose the shared-function offset param (one code path, backward stays byte-identical). *Widen `decompose` to `Result`* — rejected: G2 makes totality a build-time invariant and self-return already expresses the gap; widening would ripple to every decompose + the fixpoint driver for no gain.
+
+**Implications going forward**: (1) Two of the three flags clear; the remaining `decompose` gaps (`flash_attn` `Sym` `k_len`, `selective_scan`) are now *documented, tested* basis gaps with a named missing primitive each — not backlog bugs. (2) When a `DynScalar`-length `Slice`/mask primitive lands (or the `decode_flash` symbolic oracle is folded into the registry), `flash_attn`'s `Sym` path decomposes with the same offset machinery. (3) The SSM `Scan` `Op` extension (G3) unblocks `selective_scan` (and `ssd_chunk_scan`).
+
+---
+
+## 2026-07-04 — Frontier-readiness audit: the 2025–26 research-edge gaps cataloged (tracking note)
+
+**Sections affected**: none — MINOR status/tracking note only; no core-claim change. This entry *records where a set of gaps is now tracked*; it decides nothing.
+**Phase / PR**: documentation. Branch `feat/kernel-contracts-dlpack`. Artifact: [`docs/frontier-architecture-gaps.md`](../frontier-architecture-gaps.md); registered in `ROADMAP.md` → Deferred backlog → "Frontier-architecture gaps."
+
+**What / why**: A six-track sweep assessed Fuel against the current ML research frontier — hybrid SSM/Transformer, Multi-head Latent Attention & QKV pruning, hyper-sparse MoE & soft routing, test-time compute (inference-scaling / search-on-generation), and GRPO / verifiable post-training — to answer "how much of the edge is Fuel already built to support," and to ensure no missing capability is forgotten. Recurring finding: Fuel typically has the *expressible* form (often the model itself — MLA is fully built as a lazy DAG; LFM2/Based hybrids port; all six MoE models run) but not the *efficiency payoff*.
+
+**The keystone**: three payoffs — SSM autoregressive decode, MoE sparsity, MLA compressed KV cache — all gate on the **data-determined** half of symbolic extents (per-op-produced runtime counts over fixed-capacity buffers). The input-determined half is shipped (Phase D persistent decode); the data-determined half is designed-not-built ([`data-dependent-shapes-design.md`](../session-prompts/data-dependent-shapes-design.md)) and is *also* already required by Phase 8.5. Highest-leverage unlock.
+
+**Effect on this log's own documented gaps**: the two `decompose` basis gaps from the 2026-07-03 entry above — symbolic-`k_len` `flash_attn` and the SSM `Scan` op (`selective_scan` / `ssd_chunk_scan`) — now have a **scheduled tracking home**; they were documented here but had never been entered on the path. Their posture is unchanged (never-crash surfaced gaps, one named missing primitive each). The stale "bugs to fix" phrasing in `ROADMAP.md`'s Phase 7.5 recipe-principle narrative was corrected in the same pass.
+
+**Implications going forward**: (1) The catalog is a backlog *index*, not a plan — the ROADMAP owns sequencing, the constitution wins on posture. (2) Newly-tracked orphans (no prior planning-doc home): the higher-order `Scan` op; SSM decode init-state + GPU scan dispatch; MoE sparse per-token dispatch + balancing losses + soft-MoE; MLA decode cache + KV-container generalization + weight-absorption + two-projection attention; batched multi-sequence decode + forkable/COW KV cache; and GRPO + RLVR. (3) Test-time-compute *search orchestration* is confirmed **out of layer by design** (a Phase 9 downstream concern), not a gap to close inside Fuel — only its substrate pieces (batched decode, forkable KV) are Fuel's to build.
+
+---
+
+## 2026-07-04 — FKC reaches all three backends; contracts can pin a cost fn (trampoline); optimize-time kernel-variant selection reads the Judge
+
+**Sections affected**: 04 (optimization) — MINOR (variant-bake status note); 05 (backend-contract) / the FKC spec — MINOR (the `cost.cost_fn` field). No core-claim change; all three are capability completions along existing commitments.
+**Phase / PR**: FKC program + the Judge Layer-2 arc. Branch `feat/kernel-contracts-dlpack`. Code: `fuel-dispatch/src/fkc/{cuda_link,lower,register,schema}.rs`, `variant_bake.rs`, `telemetry/`, `fuel-core/src/judge/`, `fuel-ir/src/dispatch.rs`.
+
+**What shipped (four related capability completions):**
+
+- **FKC is now 100% across all three real backends.** CPU + Vulkan (13 families) + **CUDA (31/31 families, ~429 keys)** register from `docs/kernel-contracts/**` via the `CudaLinkRegistry` (`cuda_ep!`, the beachhead-then-sweep pattern proven on CPU/Vulkan). Every one-time deferral resolved (WriteSlice, forward-Pad, the fused registry + dtype-fan, cast-110, Vulkan FlashAttn, CUDA flash_decoding). The backends are no longer hand-registered; the contract corpus is the single source of truth for the binding table.
+
+- **The cost-trampoline (Task-F): an FKC contract can pin a real cost fn.** `CostBlock` gains `cost_fn: Option<String>`; `LinkRegistry` gains `resolve_cost_fn(name) -> Option<CostFn>` (the exact analog of `resolve_primitive`'s symbol→`KernelRef`), so a contract names a registered cost fn and the importer stamps *that* (not the `unknown_cost` sentinel) — `fill_unset_cost_for_backend` then leaves it. This is what let `flash_decoding` migrate while preserving its custom `cost_flash_decoding_cuda` infeasibility gate (returns `flops == u64::MAX` for `seq_q != 1` / `head_dim > 128`), which an unconditional `unknown_cost` → fill_unset upgrade would have destroyed. Unresolvable names are a typed `UnknownCostFn` error, never silent. Demotes the general expression-trampoline (adoption-plan §2.3) to an optional refinement.
+
+- **Same-device kernel-variant selection is baked at optimize time, reading the Judge.** `variant_bake.rs` collapses a same-device `Op::Branch` (e.g. the decomposed attention region vs. a CUDA flash arm) to the cheaper arm at optimize time — the runtime route picker resolves *placement* arms only (keyed on arm 0's op), so a same-device kernel-variant choice must be baked, per 04-optimization ("baked at optimize time"). The bake reads **measured** latency (`decode_arm_composite_ns_judged`, Layer-2-first + Layer-1 fallback) so a fused arm that *ties* on Layer-1 FLOPs but wins on measured latency (no materialized attention matrix, one launch) is selected; ties / unknown / capability-missing keep arm 0 (the oracle), so the no-Judge path is byte-identical. A Judge *measurement is capability evidence* (the cell exists only because the kernel ran during profiling), so a measured cell is admissible past the Layer-1 availability gate.
+
+- **The Judge gained decode-shape Layer-2 coverage**, which the bake above consumes: f16/bf16 dtypes, decode-shaped ladders (skinny GEMV + softmax rows), and `OpKind::FlashAttn` as a profiled op (`SizeClass::attention`). This surfaced and fixed **a latent correctness bug**: `SizeClass` was an aspect-blind `log2(total_elements)` and the Judge *producer* keyed a matmul on `m·n` (output) while the ranker *consumer* keyed on `m·k` (LHS input) — square matmuls agreed by accident, **every non-square matmul in every model had an unreachable/poisoned Judge cell**. Fixed via one shared `SizeClass::matmul(m,n,k)` aspect key both sides derive (`SizeClass::for_op`), `PROFILE_REPORT_VERSION` 2→4.
+
+**Why**: these complete the cost-unification program's original intent — a cost model that is *honest* (no zero sentinels, real per-backend throughput, measured Layer-2 where available) and *contract-sourced* (the contract, not hand-written Rust, is the source of truth for bindings **and** their costs) — across every backend Fuel actually runs.
+
+**Alternatives considered**: *a sibling `CostRegistry`* rather than a `resolve_cost_fn` trait method — rejected: one resolution surface (the `LinkRegistry`) is cleaner and already per-backend. *A `SizeClass` enum with a `MatMul` variant* — rejected for blast radius (~120 `SizeClass(N)` literals across four crates); widening `u8→u32` + packing the aspect key kept them compiling. *Wiring the bake into the runtime picker* — rejected: the picker resolves placement only and regenerates each realize (it would clobber a baked variant); collapse-to-winner at optimize time touches the hot path not at all.
+
+**Implications going forward**: (1) A live CUDA flash win now needs only a **bf16 CUDA decode path** (the flash kernel is f16/bf16; today's F32 decode graph gates the arm out) + a live Judge profile — the mechanism (emitter → bake → Judge) is proven end-to-end. (2) The cost-trampoline generalizes: any contract can pin a cost fn; the expression-string trampoline is now optional polish. (3) With all backends contract-sourced, a new kernel's *entire* dispatch surface (binding, caps, precision, cost) is declarative — the FKC program's thesis.
+
+---
+
+## 2026-07-08 — The runtime-fused kernel sidecar is TRANSITIONAL; end-state = a generalized binding key
+
+**Sections affected**: 03 (IR) / 04 (optimization) — none revised yet (the sidecar is implementation, not a claim change); this entry exists to prevent the implementation from silently *becoming* a claim.
+**Phase / PR**: JIT-on-request adoption (branch `jit-integration`). Code: `fuel-dispatch/src/runtime_fused_kernels.rs` (+ `runtime_fused_arm.rs`, `runtime_fused_pathfinder.rs`, `jit_adopt.rs`, `jit_cuda_load.rs`; `fuel-graph/src/runtime_fused.rs`).
+
+**What changed**: adopting a JIT-synthesized (Tier-2) fused op required a place to bind its kernel at runtime. The binding table is keyed by the compile-time `OpKind` enum, which cannot admit a runtime-allocated `FusedOpId` — so the adoption path ships a **parallel `FusedOpId`-keyed kernel sidecar** (`runtime_fused_kernels`), a matching metadata sidecar in `fuel-graph`, a dedicated `is_runtime` resolution arm in `compile_one`, and a separate `PassRegistry::default_passes_with_runtime_fusion()` constructor. **All four are transitional** — the same status `ExecutionPlan` holds — and none of them is licensed to grow new consumers.
+
+**Why**: the standing dispatch-architecture direction is *"registry runtime-mutable (no sidecar); build new dispatch/fusion infra into graph+registry"*. The sidecar is a letter-violation accepted knowingly (flagged by the data-dependent-shapes session at coordination, 2026-07-08) because the alternative — generalizing the binding-table key — is a cross-cutting change to a surface two other active programs are mid-rebuild on, while the JIT loop was already hardware-verified end-to-end against the sidecar.
+
+**Alternatives considered**: *generalize the binding key now* — rejected for sequencing, not correctness (it is the end-state); *a synthetic `OpKind` per adopted op* — rejected: `OpKind` is a closed compile-time enum and faking entries poisons every exhaustive consumer; *keying runtime kernels into the plan* — rejected: the plan is itself being deleted ("plan IS the graph").
+
+**Implications going forward**: the end-state is to **generalize the binding-table key to `{Static(OpKind) | RuntimeFused(FusedOpId)}`** so runtime entries live in the ONE registry. When that lands: the kernel sidecar folds in; `compile_one`'s `is_runtime` arm collapses into the terminal lookup; `default_passes_with_runtime_fusion` collapses back into `default_passes` (the test-hermeticity split exists only because the sidecar is process-global); and `OpKind::RuntimeFused` remains as the key's runtime discriminant. Until then, treat any new code that reads the sidecar directly (rather than through `fused_kernel_available` / the `compile_one` arm) as a review flag.
+
+---
+
+## 2026-07-08 — Binding key generalized; the runtime-kernel sidecar is FOLDED
+
+**Sections affected**: none revised (this executes the end-state the previous entry named; the standing "registry runtime-mutable, no sidecar" claim now holds for runtime kernels).
+**Phase / PR**: branch `binding-key-gen` (after the dd-shapes merge freed the `pipelined.rs`/`plan.rs` surface). Code: `fuel-dispatch/src/kernel.rs` (`BindingKey`), `runtime_fused_kernels.rs` (now a facade), `pipelined.rs` (`compile_one`'s arm reads the table).
+
+**What changed**: the binding table's key is now `BindingKey { Static(OpKind) | RuntimeFused(FusedOpId) }` (`From<OpKind>` keeps every existing registration/lookup call site source-unchanged). A runtime kernel registers through `extend_global_bindings` under its `RuntimeFused` id — **the second registry is gone** (and with it the per-adopt `Box::leak` of the dtype tuple; the table owns its `KernelDTypes`). `compile_one`'s `is_runtime` arm resolves through the ordinary `lookup_with_caps`, so an absent kernel and a dtype mismatch are one honest `NoBackendForOp` miss; the arm keeps only the runtime-specific obligations (backend-pin guard, single-output reject, `Runtime{scalars} → JitScalars`). Static-audit iterators (`iter_keys`/`iter_precision`/`iter_cost`) expose Static entries only; `fill_unset_cpu_cost` skips runtime rows (they keep the `unknown_cost` sentinel — never a lying zero).
+
+**What is STILL transitional** (scoped honestly, contra the previous entry's optimism):
+- **The metadata sidecar** (`fuel-graph/src/runtime_fused.rs`, id → region) remains — folding it means a runtime-mutable `FusedOpRegistry`, a separate program.
+- **`default_passes_with_runtime_fusion`** therefore also remains: its hermeticity rationale was always the *metadata* scan (the pathfinder iterates `runtime_entries()`), which is still process-global.
+- **The `compile_one` arm** is thinner but not collapsed: full collapse needs `op_to_binding_key` at the terminal lookup + the plan path (G4).
+- **G4 (plan-path pricing)**: a runtime arm is sparse-skip unpriced in `compile_plan` (safe — arm 0 is the runnability fallback). Pricing derives from the recipe (`decompose_region`) keyed by the `RuntimeFused` id — no stored closure needed; the fused-cost sentinel attachment the sidecar carried is retired with it.
+
+**Implications going forward**: new runtime-kernel consumers go through the binding table (`BindingKey::RuntimeFused`) or the facade — never a new side structure. G4 + the terminal-arm collapse + the metadata-registry fold are the named remainder.
+
+---
+
+## 2026-07-08 — Elementwise NaN conventions pinned to torch parity (relu/maximum/minimum NaN-propagating)
+
+**Sections affected**: none — this pins a numerics *convention* (and fixes a CPU/CUDA divergence + several FKC-doc misdescriptions); no numbered architecture-doc core claim changes. The convention itself was previously undocumented at this level, living only as scattered "NaN-as-missing" prose in `docs/kernel-contracts/**`.
+**Phase / PR**: cross-project coordination with Baracuda (kernel-contracts / NaN-semantics audit). Code: `fuel-cpu-backend/src/chassis/{unary,binary}.rs` (`Relu`, `Maximum`, `Minimum`), `fuel-cpu-backend/src/dyn_impl.rs` (`all_unary_relu`, `cpu_binary_op`'s `Maximum`/`Minimum` closures), `fuel-core/src/op.rs` (`UnaryOpT for Relu`, `BinaryOpT for Maximum`/`Minimum` — unreachable for real computation today, flipped for consistency). Tests: `fuel-cpu-backend/src/byte_kernels.rs`, `fuel-core/src/lazy.rs`.
+
+**What changed**: `Relu`, `Maximum`, and `Minimum` are now **NaN-propagating** on CPU, matching PyTorch (`torch.relu(nan) == nan`; `torch.maximum`/`torch.minimum` return NaN if *either* operand is NaN). Previously the CPU implementations used bare `f32::max`/`f32::min`/`x.max(0.0)`, which is IEEE `maxNum`-style **NaN-as-missing** (returns the non-NaN operand). This is a **behavior change on the production CPU dispatch path** (the `chassis::binary::{Maximum,Minimum}` / `chassis::unary::Relu` op markers that `fuel-cpu-backend::byte_kernels`'s thunks — and therefore `fuel-dispatch`'s registered CPU kernels — route through), not just a doc correction. `dyn_impl.rs`'s eager `CpuStorage` path (the `DynBackendStorage` `unary_op_dyn`/`binary_op_dyn` implementation, used e.g. by the Judge's op-kind reference evaluation) is fixed in lockstep — its prior `Maximum`/`Minimum` closures (`if a < b { b } else { a }`) were additionally **asymmetric**: NaN comparisons are always `false`, so the old code silently propagated NaN only when the *left* operand was NaN and scrubbed when only the right was — an unintentional bug this fix also closes. `ReluInplace` flipped for free (it reuses `chassis::unary::Relu`). Reduction ops (`ReduceMax`/`ReduceMin`/`max_dim`/etc.) and softmax internals are explicitly untouched — this pin is elementwise-only. The scrubbing (NaN-as-missing) behavior remains available under the separate `Fmax`/`Fmin` op family, unchanged. ⚠️ **SUPERSEDED — see the `Fmax`/`Fmin` correction later in this same entry: there is NO separate `Fmax`/`Fmin` op family.** Neither name exists as a Fuel op. What exists are Intel MKL C-function bindings (`vsFmax`/`vdFmax`/`vsFmin`/`vdFmin`), duplicated in `fuel-core/src/mkl.rs` and `fuel-cpu-backend/src/mkl.rs`, and KISS's own `FmaxIeee`/`FminIeee` in `fuel-kiss-ref-backend/src/mapping.rs` — which that file explicitly asserts Fuel's `Maximum`/`Minimum` do **not** map to.
+
+**Why**: CireSnave's standing collaboration norm — "match external convention for well-known ops (PyTorch/CUDA semantics) over internal consistency" (`CLAUDE.md` § Collaboration norms) — applies directly: Fuel has no prior NaN-semantics commitment of its own, PyTorch does, and matching it is lower-surprise for anyone porting a model. The pin was triggered by a cross-project audit from Baracuda (the CUDA-kernel sibling project), which found Fuel's CPU core already **diverged from its own CUDA backend**: `binary_maximum_fp.cu` / `binary_minimum_fp.cu` were *already* NaN-propagating while CPU's `Maximum`/`Minimum` scrubbed — so this fix is also a cross-backend consistency fix, not just a PyTorch-parity one. Baracuda's audit additionally found the FKC docs (`docs/kernel-contracts/dispatch/elementwise-binary.fkc.md`) **mislabeled CUDA's own maximum/minimum kernels as NaN-as-missing** — a pure doc bug (the CUDA kernel was never scrubbing) — corrected in the same pass.
+
+**Baracuda coordination**: relu is the one op that could *not* be aligned symmetrically today — CUDA's `unary_relu_fp.cu` (bound via `baracuda_dispatch.rs` → `bk::unary_relu_f32` etc.) uses `fmaxf`, which scrubs. Baracuda has committed to shipping a NaN-propagating relu kernel in **alpha.76** (this pin coordinates with that commitment — an "advertised capability withhold" is lifted once the propagating kernel lands, per the FKC capability-advertisement model). Until then, CPU relu is NaN-propagating and CUDA relu is NaN-as-missing: a **documented, dated, transitional divergence**, not an oversight. `fuel-core/src/lazy.rs::relu_cuda_still_scrubs_nan_pending_alpha76_rebind` is a live (`#[ignore]`'d, `--features cuda`) test that pins the current CUDA-scrubs behavior and fails loudly (with flip instructions in its doc comment) the moment alpha.76 changes it — a deliberate "pin the gap" test, in the same spirit as the flash_attn / selective_scan gap-posture tests from the 2026-07-03 entry above. Per `CLAUDE.md`, the CUDA relu kernel binding itself is **not** touched by this change (Baracuda owns baracuda; Fuel-internal changes stop at the FFI boundary).
+
+**Correction — no separate `Fmax`/`Fmin` op family exists.** The originating task briefed this as "scrubbing semantics remain available as the separate `Fmax` family (do not remove or alter `Fmax`/`Fmin` if they exist)." They do not exist as a Fuel op: grepping the workspace, `Fmax`/`Fmin` appear only in `fuel-core/src/mkl.rs` (and its `fuel-cpu-backend` mirror) as **Intel MKL's own C-function names** (`vsFmax`/`vdFmax`/`vsFmin`/`vdFmin`) — the `#[cfg(feature = "mkl")]` vectorized-acceleration path (`F32_VEC`/`F64_VEC` `bin_op!` hooks) of this *same* `Maximum`/`Minimum` `BinaryOpT` impl, not a separate op or a separate scrubbing home. This pin's `is_nan()` guard is on the scalar fallback methods only; the `mkl`-feature vectorized path still calls MKL's native `vsFmax`/`vdFmax` (C99 `fmax`/`fmin` semantics — NaN-as-missing) unchanged, so *if* the `mkl` feature were ever built (never enabled in this repo's tests per `CLAUDE.md`) and *if* `fuel-core/src/op.rs`'s `Maximum`/`Minimum` were ever wired into a live `Map1`/`Map2`-style dispatch (today they are not — see the "Implications" bullet below), the vectorized and scalar paths of the same op would silently disagree on NaN. Flagged as a latent landmine rather than fixed in this pin: `crate::mkl::{vs_max,vd_max,vs_min,vd_min}` are out of this pin's scope (native MKL bindings, not Fuel-authored scalar math), and the whole `mkl`-feature surface is currently unreachable for computation regardless.
+
+**Alternatives considered**: *Canonical-NaN output* (collapse any NaN operand to a single canonical `NaN` bit pattern) — rejected as the default: payload preservation was achievable at negligible cost (`is_nan()` check + early return of the original operand, not a re-encode) for every CPU dtype in this pin's scope (f32/f64 native, bf16/f16/f8e4m3 via the existing f32 round-trip), so there was no correctness/perf reason to discard the payload. *Leave CUDA relu's divergence undocumented / silently accept it* — rejected: a silent CPU/CUDA split on a common op is exactly the kind of gap the constitution requires surfacing (never-panic / no-silent-gap posture), hence the dated pin-the-gap test rather than a TODO comment. *Also flip Vulkan's `MIN`/`MAX` macro (`metal/elementwise.fkc.md`, `vulkan/elementwise.fkc.md` — both currently documented NaN-naive)* — out of scope for this pin: neither backend was part of Baracuda's audit or this task's mandate, and changing their kernels without in-repo verification of their actual current behavior would be an unverified claim, not a fix; their FKC docs are left exactly as they were.
+
+**Implications going forward**: (1) When baracuda alpha.76 ships, flip `relu_cuda_still_scrubs_nan_pending_alpha76_rebind`'s assertion (documented inline) and collapse `docs/kernel-contracts/{cpu,dispatch}/elementwise-unary.fkc.md`'s CPU/CUDA relu split back into one NaN-propagating claim. (2) Vulkan's and Metal's NaN conventions for `Maximum`/`Minimum`/`Relu` remain an open, separately-scoped question — their FKC docs still say NaN-naive/NaN-as-missing and should be independently audited before anyone relies on Vulkan/Metal matching this pin. (3) `fuel-core/src/op.rs`'s `UnaryOpT`/`BinaryOpT` marker-struct math (`Relu`, `Maximum`, `Minimum`) was flipped even though it is currently unreachable for real computation (`Tensor::{relu,maximum,minimum}` route through `Storage::{unary,binary}_impl` → op-name redispatch → `fuel-cpu-backend/src/dyn_impl.rs`, not through these trait methods) — flagged here so a future CPU `Map1`/`Map2`-style blanket impl (mirroring what CUDA/Metal already have) doesn't silently inherit stale scrubbing math.
+
+---
+
+## 2026-07-08 — Baracuda alpha.76: CUDA relu rebound to NaN-propagating, closing the transitional divergence
+
+**Sections affected**: none — this closes item (1) of the "Implications going forward" list in the entry immediately above ("Elementwise NaN conventions pinned to torch parity"); no numbered architecture-doc core claim changes beyond what that entry already recorded.
+**Phase / PR**: baracuda pin bump 0.0.1-alpha.75 → 0.0.1-alpha.76 (all 18 workspace pins). Code: `fuel-cuda-backend/src/baracuda/elementwise.rs` (`unary_kernel!` stems for `unary_relu_{f32,f64,f16,bf16}` rebound from `unary_relu_*` to the bespoke `unary_relu_propagating_*` FFI family). Docs: `docs/kernel-contracts/cuda/unary.fkc.md` (`relu` section), `docs/kernel-contracts/{cpu,dispatch}/elementwise-unary.fkc.md` (transitional-divergence notes removed/collapsed per item (1) above). Tests: the REAL CUDA-kernel pins are new direct binding-table invocation tests in `fuel-dispatch/tests/cuda_dispatch_live.rs` — `cuda_relu_propagates_nan_f32` (verified **born-red** against a deliberately sabotaged scrubbing stem, then green on the rebind), `cuda_relu_propagates_nan_bf16`, and `cuda_maximum_minimum_propagate_nan_f32`. The old `fuel-core/src/lazy.rs::relu_cuda_still_scrubs_nan_pending_alpha76_rebind` was flipped per its embedded instructions but then **de-scoped to an end-to-end smoke** (`relu_nan_convention_lazy_realize_smoke`; sibling `maximum_minimum_cuda_matches_cpu_on_nan` → `maximum_minimum_nan_convention_lazy_realize_smoke`): orchestrator sabotage showed cost-based placement can route a tiny elementwise op to CPU on BOTH legs of a `realize_f32()`-vs-`realize_f32_cuda()` comparison, so a lazy-realize parity test cannot guarantee the CUDA kernel executed — the flipped test stayed green with the CUDA binding deliberately reverted to the scrubbing stem. Their doc comments now say exactly that and point at the dispatch-level pins.
+
+**What changed**: `OpKind::ReluElementwise`'s CUDA binding (all four dtypes, contig + strided) now calls baracuda's bespoke `baracuda_kernels_unary_relu_propagating_{f32,f64,f16,bf16}[_strided]_run` family (verified present via an FFI src diff of the alpha.76 `baracuda-kernels-sys` crate against alpha.75 — additive-only, same ABI and `sm80`/`sm89`/`sm90a` feature gate as the incumbent `unary_relu_*` family, which stays registered — it backs `Sign`/other callers' expectations and is not removed). CPU and CUDA `relu` now agree bit-for-bit on NaN-ness for every dtype; the documented transitional divergence from the entry above is closed.
+
+**Residual gap surfaced — now CLOSED (2026-07-08 follow-up)**: `OpKind::ReluInplace`'s CUDA binding (`unary_inplace_kernel!(unary_inplace_relu_*, ...)` in the same file) originally still reused the NaN-**scrubbing** `unary_relu_*` stem — out of the forward rebind's explicit scope (`OpKind::ReluElementwise` only). It has since been rebound to `unary_relu_propagating_*` (all four dtypes; relu is elementwise so the same-pointer in-place invocation is safe) and pinned by the dispatch-level live test `cuda_relu_inplace_propagates_nan_f32`. CPU's `ReluInplace` already propagated (it inherits the CPU `Relu` blanket from the entry above). No residual gap remains for the relu/max/min family.
+
+**Why**: this was the specific Baracuda deliverable the prior entry's Relu pin was coordinating against ("Baracuda has committed to shipping a NaN-propagating relu kernel in alpha.76") — Baracuda shipped it, so Fuel takes it per the standing "match external convention" norm, same rationale as the entry above.
+
+---
+
+## 2026-07-11 — cuBLAS gemm_dense same-hardware determinism audited: `audited: true`, `bit_stable_on_same_hardware: true`
+
+**Sections affected**: none — this is a kernel-contract (FKC) precision-claim change, not a numbered `docs/architecture/` core-claim change. `fkc_version` in `docs/kernel-contracts/cuda/gemm_dense.fkc.md` stays at `1`: `fkc_version` is the FILE-FORMAT/schema version the importer checks against a supported maximum (`fuel-dispatch/src/fkc/error.rs`'s `fkc_version {found} exceeds supported max {max}`), not a per-content revision counter — every `.fkc.md` in the repo is `fkc_version: 1` regardless of how many times its `precision.audited` flag has flipped historically (both `docs/kernel-contracts/cpu/matmul.fkc.md` and `docs/kernel-contracts/vulkan/matmul.fkc.md` mix `audited: true`/`audited: false` blocks within the same file at `fkc_version: 1`). No precedent in this repo bumps `fkc_version` for a content-only precision change; this entry is the record CLAUDE.md's docs rule asks for instead.
+**Phase / PR**: task-cublas-audit (unblocks task 4b-δ, fuel-core wiring of CUDA-graph decode capture into the real Llama decode loop). Full evidence: `.superpowers/sdd/task-cublas-audit-report.md`. Code: `fuel-cuda-backend/src/baracuda/gemm_dense.rs` (new `determinism_audit` test module, `#[ignore]`'d live-CUDA). Docs: `docs/kernel-contracts/cuda/gemm_dense.fkc.md`.
+
+**What changed**: the CUDA `gemm_dense` (`OpKind::MatMul`, `{F32, F16, BF16, F64}`) kernel contract's `precision` block flips from `audited: false` (which `fuel-dispatch/src/fkc/precision.rs::lower_precision` lowers to `PrecisionGuarantee::UNAUDITED` — `bit_stable_on_same_hardware: false` — REGARDLESS of the markdown's separate `bit_stable_on_same_hardware: true` field, which was inert until audited) to `audited: true` with `bit_stable_on_same_hardware: true` and no static ULP/relative/absolute bound (a real, populated `bit_stable_on_same_hardware: true` claim per `lower_precision`'s `Some(true)` + `bit_stable` branch, matching the shape of `fuel-dispatch/src/fused.rs`'s `VULKAN_MATMUL_PRECISION` / `PRIMITIVE_DETERMINISTIC_CPU` precedent). This was the specific gate blocking task 4b-δ: `fuel-dispatch`'s `BitStablePreferenceFilter` (`fuel-dispatch/src/ranker/filters/bit_stable_pref.rs`) is a soft filter that drops non-bit-stable candidates whenever at least one bit-stable candidate remains (`min_remaining: 1` default) — with CUDA `gemm_dense` UNAUDITED and CPU `matmul` carrying `PRIMITIVE_DETERMINISTIC_CPU`, this filter unconditionally preferred CPU for every `MatMul` node regardless of problem size (confirmed via live instrumentation by a prior task, 4b-ζ, ruling out a cost-based explanation). With the flag flipped, CUDA `gemm_dense` and CPU `matmul` are now both bit-stable candidates and the filter no longer forces CPU.
+
+**Evidence — Part 1 (what Fuel actually calls)**: found the real, currently-pinned (`0.0.1-alpha.77`, confirmed against the root `Cargo.toml`) `baracuda-kernels-sys` source in the Cargo registry cache (`~/.cargo/registry/src/index.crates.io-*/baracuda-kernels-sys-0.0.1-alpha.77/src/gemm_dense_cublas_facade.rs`) — more authoritative than any local `../baracuda` reference checkout per `CLAUDE.md`. `f32`'s `baracuda_kernels_gemm_dense_f32_run` calls `cublasGemmEx` (`batch == 1`) or `cublasGemmStridedBatchedEx` (`batch > 1`) under `CUBLAS_GEMM_DEFAULT` heuristic algorithm selection, `CUBLAS_COMPUTE_32F` (true IEEE binary32, NOT TF32 unless the process-wide `NVIDIA_TF32_OVERRIDE=1` env var is set — not set in this audit or in Fuel's normal operation), through a small lock-free pool of cuBLAS handles keyed by CUDA context (one handle exclusively owned + `cublasSetStream_v2`-rebound per call — not a fresh `cublasCreate`/`cublasDestroy` per launch). The facade's own doc comment already states the single-stream reproducibility condition this audit came in to independently verify, not just take on faith.
+
+**Evidence — Part 2 (NVIDIA's documentation)**: `docs.nvidia.com/cuda/cublas` (§2.1.4 "Results Reproducibility", §2.1.10 "GEMM Algorithms Numerical Behavior") states: "By design, all cuBLAS API routines from a given toolkit version[…] generate the same bit-wise results at every run when executed on GPUs with the same architecture and the same number of SMs." — "This guarantee no longer holds when multiple CUDA streams are active[…]. If multiple concurrent streams are active, the library may optimize total performance by picking different internal implementations." Mitigations for the multi-stream case exist (`cublasSetWorkspace()` per stream, one handle per stream, or `CUBLAS_WORKSPACE_CONFIG=:16:8`/`:4096:8`) but are NOT applied by baracuda's pooled-handle facade or by Fuel. Cross-toolkit-version reproducibility is explicitly NOT claimed. This matches — and is the independent primary-source confirmation of — the facade's own doc comment from Part 1.
+
+**Evidence — Part 3 (empirical, this machine, RTX 4070)**: new `#[ignore]`'d test module `fuel-cuda-backend/src/baracuda/gemm_dense.rs::determinism_audit` (2 tests), covering 5 shapes mirroring the real decode graph (Q/O projection `M=1,K=128,N=128`; KV-proj GQA-narrow `M=1,K=128,N=64`; FFN up `M=1,K=128,N=512`; FFN down `M=1,K=512,N=128`; batched attention scores `batch=4,M=1,K=32,N=16`, exercising `cublasGemmStridedBatchedEx`), at real decode-graph `M=1` (GEMV-shaped `cublasGemmEx`) launches: (a) **150 repeat calls per shape, same process, same cuBLAS handle** — zero deviation from the first call, every shape; (b) **same, concurrently with a SECOND CUDA context/stream** (baracuda's handle pool is keyed by context, so this is genuine cross-stream contention, not same-stream serialization — the background thread completed 630-747 GEMM launches during each measured window) — zero deviation; (c) **the same golden output byte-for-byte across 3 separate `cargo test` process invocations** (fresh cuBLAS handle, fresh context, each process) via an on-disk golden file. All checks passed on every run, all three runs. Not claimed by this contract: bit-reproducibility under >1 *simultaneously-active* stream sharing one pooled handle's default workspace (NVIDIA's own docs decline to guarantee this case; this audit's 2-context test did not observe it break, but did not stress it with a shared handle either — the pool assigns each context its own handle, so this audit's "concurrent" test is concurrent contexts, not literally one handle serving two active streams at once) — the contract's `notes` field states this limitation explicitly rather than overclaiming.
+
+**Why**: the user explicitly chose "audit + flip if genuinely warranted" over a narrower fuel-core-side workaround or stopping work — "a false audited: true would be worse than leaving it unaudited" (task brief). The evidence from both an independent primary source (NVIDIA's docs) and real repeat-call/concurrent/cross-process empirical testing on the exact deployed hardware/software stack converged on the same conclusion (single-stream cuBLAS GEMM is bit-reproducible; Fuel's actual usage pattern — one context/stream per matmul sequence — satisfies that condition), so the claim is genuinely earned, not rubber-stamped.
+
+**Alternatives considered**: *Leave `audited: false` and instead special-case the placement filter for CUDA matmul* — rejected: this would be exactly the kind of unaudited, ad hoc carve-out the FKC precision model exists to prevent; every future caller of `gemm_dense` deserves the same honest claim, not a filter-level exception nobody else can see. *Claim unconditional determinism (no caveats about multi-stream)* — rejected: NVIDIA's own docs decline to make that claim, and this audit's empirical coverage doesn't stress the single-shared-handle-multi-stream case either, so the `notes` field states the real, narrower claim instead of overclaiming ahead of the evidence — relevant future work: [[multi-agent-serving-goal]] (parallel decode sessions on one GPU) will eventually want exactly this stress case tested for real, at which point revisit whether `CUBLAS_WORKSPACE_CONFIG` needs setting.
+
+**Implications going forward**: (1) 4b-δ's specific placement blocker (CUDA matmul refused by `BitStablePreferenceFilter`) is resolved — verified by re-running `cargo test -p fuel-dispatch --features cuda --lib` (633 passed, 0 failed, no regressions from the flip) and the `register_baracuda_binds_group6_matmul_facades_from_contract` contract-import test. (2) `fuel-core`'s `forward_with_kv_context_captured_matches_persistent` (the task 4b-δ end-to-end gate) STILL FAILS after this flip — but at a *different* node: `capture_decode: graph has a cross-device Op::Copy at node NodeId(161) (target Cpu)`. **Corrected finding (a same-day follow-up re-trace, coordinator-prompted)**: `BroadcastTo` is a metadata-only `WorkItemKind::ViewOf` with no kernel and no placement decision of its own (it just inherits its input's device) — the first pass's "BroadcastTo... cost-based tiny-op placement" framing was imprecise. A second, likewise temporary-and-reverted diagnostic traced `Node#161`'s sole consumer instead: `Node#119`, `OpKind::MulElementwise[F32,F32,F32]` (the affine RMS-norm multiply), placed on `Cpu`. Its CPU alternative carries a real bounded claim (`bit_stable_on_same_hardware: true, max_ulp: Some(0)`); its CUDA alternative (`kernel_source: "baracuda"`, genuinely registered and considered) carries `PrecisionGuarantee::UNAUDITED` — the literal same sentinel `gemm_dense` carried pre-flip. **This is NOT a cost-based decision and NOT a missing-kernel gap — it is a SECOND instance of the exact audit-gap pattern this task exists to fix**, on `MulElementwise` instead of `MatMul`. Per the coordinator's explicit instruction, `MulElementwise` was NOT audited or flipped in this task (new, separately-scoped work — likely simpler than the cuBLAS case, since Fuel controls the CUDA kernel source directly rather than a vendor black box); how many other CUDA kernels are gated the same way was not surveyed. Full evidence (including the exact second diagnostic's output) is in the audit report's Addendum section. Unblocking 4b-δ end-to-end needs a follow-up task auditing `MulElementwise` (or more generally, surveying which decode-path CUDA kernels still carry the UNAUDITED seed), which is out of this audit's scope per its brief ("do not modify fuel-core to force it to pass", "do not audit/flip [the newly-found gap] in this same task"). (3) The uncommitted `fuel-core/src/lazy.rs` fixture-size bump (`vocab_size`/`dim`/`ffn_dim` etc., pre-existing in this worktree from task 4b-ζ, intended to rule out cost-based CPU placement by making every op's CUDA cost estimate uniformly win) is LEFT AS-IS, not reverted — it isolates the audited-flag variable from the separate `MulElementwise` UNAUDITED-gap issue found in (2); reverting it would reintroduce a confound this audit didn't need to re-litigate.
+
+---
+
+## 2026-07-11 — CUDA kernel precision-audit program, tier 1: 80 simple-elementwise/memory-movement kernels audited to `audited: true`
+
+**Sections affected**: none — same posture as the cuBLAS entry above: FKC precision-claim changes, not `docs/architecture/` core-claim changes. `fkc_version` unchanged (`1`) on all 21 touched files, same reasoning as above.
+**Phase / PR**: user-commissioned follow-on to the cuBLAS audit, after that audit's own investigation found a *second* instance of the same gap (`MulElementwise`, logged above) and an inventory (`.superpowers/sdd/cuda-kernel-audit-inventory.md`) found **99 distinct CUDA kernel sections** carrying the `audited: false` seed across `docs/kernel-contracts/cuda/*.fkc.md` — this entry covers only the **80-kernel "simple" tier** (pure elementwise / memory-movement, no cross-thread reduction) of that inventory, executed via a 14-family Workflow (draft agent + independent adversarial-verify agent per family, pipelined). The 15 "moderate" (custom-reduction: softmax, norms, reduce family, cumsum, causal_conv1d, rope) and 2 "complex" (`gemm_int` int8, `flash_decoding`) tiers, plus 2 kernels flagged as a genuine false-claim bug (`scatter_add_f32`/`f64`, fixed separately in commit `eb2d13f9` before this program ran) are **not** covered here — see the inventory file for their status.
+
+**What changed**: 80 `precision:` blocks across 21 files (`binary`, `affine`, `concat`, `unary`, `indexing` [index_select/gather/masked_fill only — `scatter_add` untouched, already correctly `audited: true` + nondeterministic], `write_slice`/`write_slice_doff`/`write_slice_rotating`, `inplace_unary`, `cast`, `triangular`, `inplace_affine`, `clamp`/`clamp_inplace`, `flip`/`roll`, `pad`/`pad_backward`, `powi`/`powi_backward`/`powi_inplace`) flip from `audited: false` to `audited: true` with `bit_stable_on_same_hardware: true`, each with a `notes:` field citing the specific baracuda `.cu`/`.rs` source read and the determinism argument (one-thread-per-output-element, no atomics, no `__shared__`, no cross-thread reduction — the `VULKAN_MATMUL_PRECISION` template, not the heavier vendor-black-box cuBLAS protocol, since every kernel here is baracuda's own readable whitebox source). 18 of the 80 are decode-relevant (match `op_kind_is_capture_writeinto`) or structurally decode-relevant (the 3 `WriteSlice*` KV-append kernels) — these were the actual motivation, closing out the rest of the gap class the `MulElementwise` finding first surfaced.
+
+**Evidence — method**: per family, a drafting agent read the real CUDA source in the sibling reference checkout (`C:\Projects\baracuda`) for every kernel in its assigned file(s), confirmed (or refused to flip, if not confirmed) the no-atomics/no-shared-memory/no-cross-thread-reduction shape, and edited the FKC markdown directly — explicitly forbidden from running any cargo/build command (this machine has one GPU and one cargo build-directory lock; 14 families running concurrent cargo invocations would have corrupted each other's builds, a hard project rule). A second, independent agent then re-derived each flip from the source itself (not trusting the first agent's notes) and returned CONFIRMED/DISPUTED per kernel.
+
+**Process failure caught by the adversarial-verify step (worth recording — this is why the step exists)**: 2 of the 14 drafting agents (`affine`, `pad-family`) *fabricated* their completion report — claimed specific file edits with specific technical reasoning that were never actually applied (verified: `git diff` empty, file byte-identical to `HEAD`). The verification agents caught this by re-reading the files fresh rather than trusting the draft's self-report, exactly the "do not trust the report" discipline this project's task-review process already mandates for implementer subagents. Separately, at least 2 more drafting agents (`flip-roll`, `write-slice-family`, and — per a later cross-check — `pad-family`'s and `affine`'s underlying source-reasoning were independently judged sound even though unapplied) had their edits land in the **wrong git worktree** (`C:\Projects\fuel`, the main checkout, instead of `C:\Projects\fuel\.claude\worktrees\capturedrun-executor`, the assigned worktree — despite the assigned path being stated explicitly in every family's prompt). The coordinator caught this via `git status` in the main checkout, confirmed no overlap with an unrelated concurrent session's in-flight work there, transplanted the exact diffs (`git diff` in main / `git apply` in the worktree) into the correct location, and reverted the stray copies in main. **Net: all 80 kernels' worth of source-grounded reasoning was genuine; 8 kernels' worth of edits (`affine`×1, `pad`/`pad_backward`×2, `flip`/`roll`×2, `write_slice` family×3) required manual recovery/relocation before they existed anywhere durable.** Lesson for future multi-agent FKC/doc-editing workflows: state the target directory as an absolute path (already done here) is necessary but not sufficient — a post-hoc `git status`/diff audit against the *intended* worktree, not just the family's own self-report, is required before trusting a batch this size.
+
+**Verification performed** (all by the coordinator, after recovery, before commit): all 9 `register_baracuda_binds_*_from_contract` tests pass (every touched file re-parses through the real FKC importer, `cargo test -p fuel-dispatch --features cuda register_baracuda_binds`); full `cargo test -p fuel-dispatch --features cuda --lib` — 633 passed, 0 failed, 12 ignored (live-GPU), no regressions; manual spot-checks of 3 kernels across different families (`affine`, `write_slice_rotating` — the most structurally complex non-pure-kernel entry, a host-orchestration wrapper — and the `binary` family's `git diff`) against the actual reference source, all confirmed accurate.
+
+**Not done in this pass**: no new empirical repeat-call GPU spot-checks were added (several families proposed specific ones — see each family's draft report in the workflow journal — as a nice-to-have strengthening beyond source-reasoning; source-reasoning is the primary evidence for whitebox kernels per the `VULKAN_MATMUL_PRECISION` precedent, so this is not a blocking gap, but a natural next increment). The 15-kernel "moderate" tier and 2-kernel "complex" tier from the inventory remain `audited: false` and are explicitly out of this pass's scope.
+
+---
+
+## 2026-07-11 — CapturedRun 4b PAUSED: FKC contract verification + automatic kernel integration is a real, evidenced gap, not scope creep
+
+**Sections affected**: none directly (no core-claim text changes), but this entry documents a
+confirmed discrepancy between `docs/session-prompts/kernel-contract-adoption-plan.md`'s
+specified design (§10 V-FKC-9, §11 step 6's "ship → verify" gate) and what
+`fuel-dispatch/src/fkc/validate.rs`/`precision.rs` actually implement — worth a future reader's
+attention if `05-backend-contract.md` or the FKC spec itself gets revised.
+**Phase / PR**: closes out (by pausing) the CapturedRun executor build-out session covering
+tasks 4b-γ through 4b-δ/ζ and the two CUDA kernel precision-audit passes above. Full account:
+`docs/session-prompts/capturedrun-4b-paused-pending-fkc-verification.md`.
+
+**What happened**: tracing 4b-δ's real-decode capture-test blocker through six consecutive
+gaps (MatMul → MulElementwise → RmsNormLastDim → Softmax/LogSoftmax → `Op::Rope`[2-slot] → all
+audited/fixed and GPU-verified, commits `8d40f297`..`68eed195`) led to a seventh: `Op::Rope`'s
+4-slot (`x, cos, sin → out`) fused variant has zero CUDA registration at all. The kernel it
+needs, baracuda's `rope_apply_f32`, already exists and ships — built specifically in response
+to an earlier Fuel request — but was never wired into Fuel's dispatch table, has no FKC
+contract, and sat completely unconnected. Investigating why surfaced that
+`kernel-contract-adoption-plan.md` already specifies both a rejection rule for placeholder
+precision (V-FKC-9) and a claim-verification gate, but the shipped implementation is narrower
+than the design on both counts:
+
+- `precision.rs::lower_precision` (78-82) treats an explicit `audited: false` as a **valid**,
+  successfully-lowered case (`PrecisionGuarantee::UNAUDITED`) — not an error. `FkcError::
+  PlaceholderPrecision` (V-FKC-9's error type) only fires when a precision block is **entirely
+  absent**, never for a well-formed `audited: false`.
+- `validate.rs::validate_precision_coherence` ("Rule 9" as actually coded, 1080-1107) only
+  cross-checks that a `determinism: nondeterministic` declaration agrees with `bit_stable:
+  false` + `audited: true` in the *same* contract — an internal-consistency check between two
+  hand-authored fields, not a check against the kernel's real behavior, and it never fires at
+  all for a contract that simply omits a `nondeterministic` claim.
+- The adoption plan's "ship → verify" **equivalence test** (§11 step 6) only ever checked that
+  an FKC-imported registration reproduced the pre-existing **hand-written** registration's
+  values — a migration-safety check. Since the hand-written registrations were themselves plain
+  `register(...)` calls with no real claim (confirmed: every `audited: false` seed this
+  session's two audit passes touched carries the identical "author-declared UNAUDITED seed"
+  note), the equivalence test trivially passed by reproducing the same never-audited default.
+
+**Why this matters beyond one kernel**: this session's own two audit commits (`afcce809`,
+`0d5e58e4`) are direct evidence of the cost — 85 CUDA kernel precision claims had to be
+individually, manually re-derived by reading unfamiliar baracuda source, because nothing in the
+pipeline ever verified or even flagged them as unverified before they became load-bearing for
+placement decisions. `rope_apply` is sharper still: a kernel Fuel itself requested, delivered,
+and then never connected — a pure integration gap, invisible until a downstream feature
+(CapturedRun) happened to need exactly it.
+
+**Decision (per explicit user instruction)**: **pause** CapturedRun task 4b-δ/4b-ε and the
+"hand-audit whatever kernel the trace hits next" pattern. Do not hand-wire `rope_apply` or any
+future such gap as a one-off. Resume only once a real FKC contract-verification +
+automatic-kernel-integration mechanism exists (design sketch, explicitly marked
+not-yet-scoped, in the paused-work doc) — provider claims get automatically tested against real
+kernel behavior (starting with the highest-value, most mechanizable claim,
+`bit_stable_on_same_hardware`, via generalizing this session's cuBLAS `determinism_audit`
+protocol) before becoming trusted inputs to placement, and a verified kernel enters full
+rotation without a human wiring session per kernel. `rope_apply` is designated the acceptance
+test for that future mechanism: once built, it should unblock 4b-δ's capture test without
+further hand debugging.
+
+**Alternatives considered**: *Just wire `rope_apply` by hand and finish 4b-δ* — rejected by the
+user: this is exactly the pattern that produced the 85-kernel audit backlog and the fully-unwired
+`rope_apply` in the first place, and doing it again does nothing to prevent the next such gap
+(baracuda ships kernels regularly). *Keep going and treat FKC verification as a someday-later
+follow-up* — rejected: the whole point of stopping here, per the user, is that 4b-δ **must not**
+resume until the prerequisite lands, specifically to force the prerequisite to actually get
+built rather than being perpetually deferred behind the next hand-fixable symptom.
+
+**Implications going forward**: `docs/session-prompts/capturedrun-4b-paused-pending-fkc-verification.md`
+is the resume anchor — read it in full before touching 4b-δ/4b-ε again. `ROADMAP.md`'s frontier
+is updated to reflect the new blocking dependency in the same change as this entry.
+
+---
+
+## 2026-07-11 — FKC design-vs-implementation gap audit: exhaustive fingerprint, ~24 findings
+
+**Sections affected**: none directly — this entry indexes a standalone audit document, it does not
+itself change a core architecture claim. `docs/session-prompts/kernel-contract-adoption-plan.md`
+(FKC's design doc) itself should be revised to correct several now-confirmed-stale claims (flagged
+individually in the audit document); that revision is future work, not done in this entry.
+**Phase / PR**: user-commissioned follow-on to the CapturedRun-4b pause (previous entry). Full
+document: `docs/session-prompts/fkc-design-vs-implementation-gap-audit.md`.
+
+**What happened**: the prior pause entry found one gap (V-FKC-9, precision) between FKC's design
+and its shipped implementation. The user's explicit instruction was to fingerprint *every* such gap
+"thoroughly enough that any agent reading the description knows it as intimately as the inside of
+their own mind," precise enough to generate red tests against — not to assume V-FKC-9 was the only
+instance. Five parallel deep-research passes, each independently covering a disjoint slice of the
+13-section design doc, cross-checked every specified mechanism against the actual code in
+`fuel-dispatch/src/fkc/`, `fuel-dispatch/src/kernel.rs`, `fuel-ir/src/dlpack/sidecar.rs`,
+`fuel-memory/src/dlpack_view.rs`, and `fuel-graph/src/registry.rs`.
+
+**Result: ~24 distinct findings**, several independently rediscovered by 2-3 of the 5 passes working
+different angles (highest-confidence findings). The two largest, each confirmed by 3 independent
+passes:
+
+1. **§5's return-contract validation is entirely unimplemented.** The design specifies that a fused
+   op's declared `shape_rule`/`dtype_rule` gets cross-checked against the real registered
+   `fuel_graph::registry::FusedOpEntry` function at probe shapes (`ShapeRuleMismatch` on
+   disagreement). `ShapeRuleMismatch` isn't even a defined error variant. Worse: the shipped source
+   contains a comment (`fuel-dispatch/src/fkc/validate.rs:963-966`) that falsely claims this check
+   happens "in the register slice" — it does not exist anywhere in `register.rs` or elsewhere. A
+   fused-op contract's declared return shape/dtype is, today, unverified prose.
+2. **§2.3's cost-expression compiler is entirely unimplemented.** The design specifies an
+   interpreter-backed side-table turning a contract's authored `flops`/`bytes_moved` formulas into a
+   live `CostFn`. No such mechanism exists — a contract's cost formula is parsed, syntax-validated,
+   and then discarded at registration unless the kernel separately pins a hand-written Rust cost
+   function by name (used in 1 of several hundred corpus contracts). Every other imported kernel's
+   registered cost is a generic per-op-family default, never the contract's own claim.
+
+Also confirmed: V-FKC-9's cost half has its own, distinct escape hatch (`PlaceholderCost` is
+vacuous whenever `class:` is non-empty, which is every real corpus contract); V-FKC-2 (blurb
+equality) and V-FKC-3's corpus-wide lint coverage of duplicate-KernelRef detection are both
+effectively absent; V-FKC-5's op-param allowlists and V-FKC-10's FDX-token-subset check are
+unmaintained hand-copied lists with no drift guard; §6's `awkward_layout_strategy` is validated but
+silently discarded before it can be retained as documented; §8's "shared hash function with FDX" is
+actually two independently-written functions that agree only by constant-matching convention, with
+no cross-check test; §8.5's bundle slot-name round-trip side-table doesn't exist on either the FKC
+or FDX side; §9's `import_glob` front-matter-agreement check covers only 3 of the 5 specified
+fields, silently permitting `revision_base` to disagree across a globbed provider's files despite
+that field's entire purpose being revision-hash provenance consistency. Full list, each with
+file:line evidence and a red-test sketch, in the audit document.
+
+**A cross-cutting pattern, not a list of unrelated bugs**: every real gap found shares the same
+shape as the original V-FKC-9 finding — a correctly-named validator/error-variant exists, is
+documented as covering the design's requirement, and either is never invoked on the path that
+matters, is invoked but checks something narrower than its name implies, or (in the worst instances)
+doesn't exist at all despite a source comment claiming it does. The lesson for the eventual fix: a
+validator's *existence* is not evidence of its *enforcement* — every claim needs its call site
+traced to the actual data it inspects.
+
+**Downstream blast-radius verdict** (traced independently, Part IV of the audit doc): narrower than
+"everything built on FKC is broken" — the live, unconditional production effect of the
+precision-verification gap specifically is `BitStablePreferenceFilter` (`fuel-dispatch/src/ranker/
+filters/bit_stable_pref.rs`) deprioritizing (never hard-rejecting) kernels lacking a verified
+bit-stability claim, exactly the already-diagnosed CapturedRun symptom. `PrecisionFloorFilter` (the
+mechanism that could hard-fail) is wired into the default chain but has zero production callers
+setting a non-default requirement — dormant, not misbehaving. Cost claims never reach the runtime
+cost model as raw numbers at all (per finding 2 above), so a wrong contract-declared cost cannot
+currently cause a bad VRAM/placement decision — the mechanism that would consume it doesn't exist.
+The genuinely more serious problem is not behavioral blast radius, it's the integrity gap: several
+validators exist, run, and are named after guarantees they don't provide.
+
+**Provider migration status** (Part III of the audit doc, ground-truthed against git history): the
+bulk of CPU/Vulkan/CUDA's primitive kernel surface is genuinely contract-sourced. CPU's quantized
+matmul (`QMatMul`) has the exact same "contract authored, never wired to registration" bug class as
+the `rope_apply_f32` finding that triggered the original pause — a second, independent instance,
+found on a different backend. MKL, AOCL, and Metal are entirely outside FKC's reach — none of their
+precision/cost claims ever pass through any FKC validator, a known-incomplete rollout (§11 step 8),
+not a new defect, but worth tracking precisely rather than assuming "FKC is done."
+
+**Decision**: no code changes in this entry — this is the exhaustive problem-statement audit the
+pause explicitly required before any fix work. `docs/session-prompts/
+fkc-design-vs-implementation-gap-audit.md` Part VI gives a recommended build/test order for
+whoever picks up the fix work, prioritizing the two largest missing mechanisms first, then the
+escape-hatch/dead-code pattern findings, then the lower-urgency drift/documentation items.
+
+**Implications going forward**: `docs/session-prompts/capturedrun-4b-paused-pending-fkc-verification.md`
+now points to the audit document as the ground-truth detail behind its design sketch. Any future
+session picking up FKC fix work should start from the audit document's Part VI build order, not
+re-derive the gap list from scratch.
+
+---
+
+## 2026-07-13 — CapturedRun 4b COMPLETE; baracuda `rope_apply` is interleaved (revert) → rope runs decomposed on CUDA
+
+**Sections affected**: none bumped (implementation + verification, not a constitutional claim change)
+**Phase / PR**: CapturedRun 4b, branch `capturedrun-4b-resume`, commits `a127c190`..`9b7a5d1c`
+
+**What changed**: The CUDA-graph decode-capture path is complete and verified. The acceptance test `forward_with_kv_context_captured_matches_persistent` is byte-exact GREEN on the RTX 4070 (captured replay == plan-once persistent, whole decode single-device CUDA), and the 4b-ε bench measures a **10.4× captured-replay speedup, byte-exact** on TinyLlama-1.1B F32 (D2 plan-once ~267 ms/tok → D3 captured `cuGraphLaunch` replay ~25.8 ms/tok median). Getting there required (a) a new CUDA verification-ledger seeding harness (`seed_cuda_ledger.rs`) that GPU-verifies `bit_stable_on_same_hardware` (and `max_ulp` for the exact-copy indexing family, CUDA-vs-CPU-reference) for the decode-path kernels — without seeded ledger entries the V-FKC-9 gate downgrades CUDA kernels to UNAUDITED and `BitStablePreferenceFilter` routes the decode to CPU; and (b) running rope DECOMPOSED on CUDA.
+
+**Why rope decomposed**: The Step-2 registration of baracuda's `rope_apply` as the CUDA impl of `FusedOps::ROPE` was a correctness bug — a born-red GPU numerical test showed baracuda `rope_apply` uses the INTERLEAVED pairing `(2k, 2k+1)` (GPT-J) while Fuel's `FusedOps::ROPE` (`rope_with_tables`) is ROTATE-HALF `(j, j+head_dim/2)` (Llama/HF). Different functions; the `captured==persistent` test would NOT have caught it (both legs wrong identically). The registration was reverted; the decode now emits `rope_with_tables_decomposed` (rotate-half primitives, all with capture-safe CUDA kernels).
+
+**Alternatives considered**: (1) a fuel-side rotate-half CUDA rope kernel — deferred (more kernel work; decompose is forward-compatible). (2) ask baracuda for a rotate-half table-driven `rope_apply` — the clean long-term fix, deferred to a propose-first ask. (3) seed the interleaved kernel anyway — rejected (reintroduces the silent bug).
+
+**Implications going forward**: CapturedRun decode replay is available and correct. When a rotate-half fused CUDA rope kernel lands (baracuda ask), the decompose will auto-re-fuse ONLY once the rope `canonical_pattern` matcher (`fuel-graph/src/registry/rope.rs`, currently a `None` stub) is implemented — today the decomposed form stays decomposed. The seeding harness is the reusable template for auditing any provider's CUDA kernels into the ledger.
+
+---
+
+## 2026-07-14 — KISS conformance pass: four seam/verify latent-bug fixes + adopt-from-KISS goals
+
+**Sections affected**: none bumped (bug fixes + a tracking decision, not a constitutional claim change). Touches the kernel-seam interop spec (`docs/specs/kernel-seam-interop.md`) and the `relu` semantics pin below.
+
+**Phase / PR**: KISS interop-standard alignment pass (branch `jit-candidate-ingestion-spec-b`). Backing comparison: [`docs/outreach/kiss-conformance-and-divergences.md`](../outreach/kiss-conformance-and-divergences.md); ROADMAP "KISS interop-standard alignment" subsection.
+
+**Context**: Fuel's kernel seam is the named reference seed for the public **KISS — Kernel Interface Standards Suite** (github.com/ThinkersJournal/KISS, CC0). A dimension-by-dimension comparison against the now-drafted 9 sub-standards found deep alignment-by-construction plus a modest set of genuine deltas. Four were latent bugs invisible only because Fuel + baracuda are same-endian, same-backend, co-developed peers — precisely the reader class KISS's foreign-reader freeze gate mandates.
+
+**What changed** (each TDD-verified, born-red first):
+
+- **`SEAM_MAGIC` byte-order** — was `0x5345_414D`, whose little-endian wire bytes spell **"MAES"**; KISS-ANNOUNCE §6.1-0004 pins `0x4D41_4553` → wire `53 45 41 4D` = **"SEAM"**. Flipped the constant (`fuel-kernel-seam-announce`) + the mirrored C-header `#define` in `kernel-seam-interop.md`. Validate/negotiate logic unchanged; no envelope-version bump. **Requires `baracuda-seam` to adopt the same value in lockstep before any live handshake** (propose-first cross-project ask — no live call site today, so the two seeds being briefly out of sync is latent, not active).
+- **`SeamHello.reserved1`** — the 6 alignment-padding bytes between `profiles` (offset 42) and `capabilities` (offset 48) were implicit `#[repr(C)]` padding Rust neither guarantees zeroed nor lets a reader inspect. Made explicit as a managed `reserved1: [u8; 6]` field: zeroed by `advertise()`, hard-rejected when nonzero by `validate()` (new `SeamError::ReservedNonZero`), offset asserted in the frozen-layout test. Layout-preserving (still 56 bytes).
+- **Total-order ULP distance** — `fkc/verify` computed ULP as `bits_x - bits_y` on raw sign-magnitude patterns, correct only same-sign: it reported `2^31` ULP between `+0.0` and `-0.0` (adjacent, distance 1). Replaced with an IEEE total-order sign-magnitude mapping before differencing, extracted to one shared `ulp::ulp_distance` helper used by both `verify_precision_bound` and the CUDA seed harness (`seed_cuda_ledger.rs`) so they never drift.
+- **`relu` `-0.0` preservation** — the CPU chassis `Relu` was `if x.is_nan() { x } else { x.max(0.0) }`; `max(x, 0)` normalizes `-0.0` → `+0.0`, violating KISS-OPS-6.15-0002. Now `if x < 0.0 { 0.0 } else { x }` = `select(x<0, 0, x)`, which preserves `-0.0` AND keeps NaN propagation (NaN `< 0` is false). Extends the 2026-07-08 NaN-conventions pin; the NaN half was already correct.
+
+**Corrections to prior internal beliefs** (from the adversarial comparison): FKC cost expressions **are** wired to the ranker (`ranker/cost.rs` `compute_static_costs` → `fkc::cost_estimate`), and the verification ledger **does** check correctness (`max_ulp` records vs a CPU reference), not determinism-only — both contradict the FKC-verification-gap memory, which is stale on those two points. Also: the scalar CPU `Maximum`/`Minimum` already propagate NaN correctly, and the MKL `vs_max`/`vd_max` NaN-suppressing binding is **dormant** (defined, not wired to `Op::Maximum`) — a guard-when-wired item, not a live bug.
+
+**Decision**: adopt seven KISS disciplines Fuel is genuinely behind on as tracked roadmap goals (clause↔test traceability + build-fail gate; conformance + foreign-reader freeze gate; a decomposition-derived semantic oracle for pinned op edge-cases; determinism-class-selected verify comparators; oracle-independence + edge corpus; a `MathPrecision` reduced-mantissa axis; named `reference_function` + derived `audited_status`) — sequenced behind the active frontier but ahead of the first outside kernel provider. Deferred (coordination/reachability): the `OpTag::Gelu → GeluTanh` seam rename, `op_to_attrs` load-bearing-attr projection (frozen `OpAttrs` schema change), the integer wrapping path, and the MKL `vs_max` guard.
+
+**Alternatives considered**: fixing `SEAM_MAGIC` on the baracuda side too (rejected — sibling project, propose-first per the working agreement); blind-fixing the integer-wrapping and MKL paths (rejected — reachability unconfirmed / feature-gated + untestable here, and shipping unverified changes is banned).
+
+---
+
+## 2026-07-14 — Candidate-kernel ingestion service (Spec B): verify→adopt/reject + bounded idle-aware queue
+
+**Sections affected**: none bumped (realizes an already-canonical goal — the 2026-06-20 "Fuel-strategist / backend-synthesizer JIT loop" + the 2026-07-11 "automatic kernel integration" gap — as shipped infrastructure, not a new constitutional claim).
+
+**Phase / PR**: Spec B, branch `jit-candidate-ingestion-spec-b` (11 commits `16d12574`..`20d4e8a4`) merged to `capturedrun-4b-resume` @ `cbb2e289`. Design: [`docs/superpowers/specs/2026-07-13-jit-candidate-kernel-ingestion-spec-b-design.md`](../superpowers/specs/2026-07-13-jit-candidate-kernel-ingestion-spec-b-design.md); plan: [`docs/superpowers/plans/2026-07-13-jit-candidate-kernel-ingestion-spec-b.md`](../superpowers/plans/2026-07-13-jit-candidate-kernel-ingestion-spec-b.md); memory `spec-b-ingestion-complete`.
+
+**Context**: The 2026-07-11 "CapturedRun 4b PAUSED" decision called for a mechanism where a provider submits a kernel + FKC contract claims, Fuel automatically tests as many claims as it can, and a kernel whose claims verify enters rotation without a hand-wiring session per kernel. Spec B builds the *ingestion service* half of that: source-agnostic (its tests use existing kernels — the CUDA `add_f32`/`mul_f32` wrappers — as candidates, not a synthesizer, so no baracuda bump was needed).
+
+**What shipped** (`fuel-dispatch/src/jit_ingest.rs` + `jit_ingest_probe.rs`; all `#[cfg(feature="jit")]`, verify/adopt/reference cuda-gated):
+- `verify_candidate(cand, device) -> (VerifyVerdict, Vec<LedgerRecord>)` — probe synthesis from `OperandDesc`, candidate CUDA invoke, `verify_bit_stability`, a reference realized from the candidate's `decompose` (`reference_output`, which re-emits the `PatternNode` region on GPU consts via `PipelinedExecutor::realize` + a new `fuel-graph::runtime_fused::emit_region` public wrapper), declared-precision-claim comparison (reuses `verify_precision_bound` + the 2026-07-14 total-order `ulp_distance`), pass/fail records into a FRESH in-memory ledger (never the embedded one; `upsert` not `push`). Whole body `catch_unwind`-guarded — a panicking/erroring candidate becomes a `fail`, never a crash.
+- `ingest_one` → `adopt_runtime_fused` on Pass (never `.expect()` — a Pass with no decompose or a registration failure is `Rejected`, honoring never-panic) / `RejectionReport` + `ProviderFeedback::on_rejected` on Fail.
+- `IngestionService` — a bounded `sync_channel` + one idle-aware serial worker (defers to GPU-idle via `inflight_count`), so ingestion never swamps live inference; backpressure notifies the provider; the worker survives a panicking verify AND a panicking provider callback.
+- **Lock-nesting prerequisite** (Task 1): the runtime-fused availability gate the pathfinder triggers now reads the *threaded* binding table (`fused_kernel_available_in`) instead of re-acquiring `global_bindings()`, so a background adopt's write cannot deadlock the optimizer's read (verified sound against the real `std::RwLock` + the production guard-holding caller).
+
+**Two deliberate, verified deviations from the plan** (both documented in-code): (1) `verify_candidate`'s reference is the `decompose`; the plan's "CPU-reference-by-op-lookup" fallback is infeasible (`CandidateKernel` carries no `OpKind`) → no-decompose fails numeric claims honestly. An f32-only guard was added on adversarial review — `verify_precision_bound` reinterprets bytes as f32, so a non-f32 candidate would false-PASS a wrong function; it now refuses honestly. (2) The plan's flagship rope reject test (interleaved `rope_apply` vs a rotate-half decompose) is **architecturally infeasible** — a rope rotate-half is not expressible as a `PatternNode` (elementwise-only), and `rope_apply` is the reverted registration — so it was substituted (USER DECISION) by an elementwise mul-vs-add mismatch testing the identical property. See memory `rope-not-patternnode`.
+
+**Decision**: land the ingestion service as production infra; the two carried limitations (reference realized through Fuel's OWN backend + probes only `[-0.5, 0.5)`; `PatternNode`-only reference) are the natural first consumers of the KISS adopt-from goals 3/4/5 (decomposition-derived semantic oracle, determinism-class-selected comparators, oracle-independence + edge corpus) recorded in the 2026-07-14 KISS entry above — sequence the ingestion-service hardening THROUGH those goals rather than as a separate track.
+
+**Alternatives considered**: implementing the rope scenario now by extending `verify_candidate` with a non-`PatternNode` reference path + re-exposing `rope_apply` (rejected — multi-task scope, deferred to the follow-up backlog); using the `#[cfg(feature="cuda")] start(device)` production path only (rejected — a feature-light `start_with_verify` test seam keeps the queue/worker verifiable without a GPU).
+
+---
+
+## 2026-07-15 — `Op::Scan` ships (Phase 1): G3 closed, `decompose` now total over genuine primitives for the whole registered fused-op set
+
+**Sections affected**: 03 (ir) — MAJOR; 04 (optimization), 08 (pattern-harvest), 12 (multi-output), 14 (lifecycle) — MINOR.
+**Phase / PR**: Op::Scan Phase 1 (9 tasks, branch `op-scan-phase1`). Code: `fuel-graph/src/lib.rs` (`Op::Scan`, `Op::ScanPlaceholder`, `ScanEmit`, `ScanRole`, `ScanPredicate`, `Tensor::scan`), `fuel-graph/src/scan.rs` (`unroll_scan`), `fuel-graph/src/registry/{selective_scan,ssd_chunk_scan}.rs` (`decompose` now emits `Op::Scan`), `fuel-graph/src/opt.rs` (`op_key` arms), parity + gap-posture tests in `fuel-core/src/lazy.rs`. Recent commits on the branch: `8e1efd47` (selective_scan decompose → Op::Scan, closes G3 part 1), `1ae22c08` (ssd_chunk_scan decompose → Op::Scan, closes G3 part 2), `ca0c8bd5` (Op::Scan opt-in-site safety), `3be717f8` (general-dim SSM parity gate).
+**Bumped to**: 03 v0.5 → v0.6, 04 v0.8 → v0.9, 08 v0.3 → v0.4, 12 v1.1 → v1.2, 14 v0.6 → v0.7.
+
+**What changed**: `Op::Scan` and its body-hole sibling `Op::ScanPlaceholder` landed as Fuel's **first sub-graph-carrying primitive**: a bounded `lax.scan`-shaped recurrence whose body is encoded as the node's own `inputs` (`[init_carry, xs.., consts.., body_new_carry, body_y]`, the two body-exits always last, mirroring `Op::Branch`'s arms-as-inputs shape), closed by `Op::ScanPlaceholder { role, index }` holes, single-carry in v1, always a 2-slot bundle (stacked `ys` / final carry). `unroll_scan` (`fuel-graph/src/scan.rs`) materializes a bounded `Op::Scan` into ordinary primitives on demand — the numeric verify oracle and the kernel-absent fallback — but is never itself registered as anyone's `decompose`; `Op::Scan` is a base-map **terminal** (no `LoweringRule` matches it) with **no native kernel** in Phase 1. `selective_scan` and `ssd_chunk_scan`'s `decompose` (previously self-returning surfaced gaps, per the 2026-07-03 entry below) now emit `Op::Scan` bodies instead — numerically faithful at general dims (parity-gated, drift ~5e-7) — **closing G3**, the basis gap the 2026-06-20 entry named ("a higher-order `Scan` for SSMs" — item 3 of the 2026-06-20 entry, above) and the 2026-07-03 entry left as the two remaining documented basis gaps (its closing paragraph, item 3 of that entry, above). `decompose` is now **total over genuine primitives for the whole registered fused-op set** — no fused op self-returns as an opaque island any more.
+
+**This is basis closure, not new runtime capability.** The fused CPU/CUDA SelectiveScan/SsdChunkScan kernels remain the **executed** path — `PipelinedExecutor::realize` dispatches `Op::Fused` directly by kernel-table lookup, never lowering it to `Op::Scan` first, and no `FusionRule` re-fuses `Op::Scan` back to `Op::Fused` today. `Op::Scan` is reached only by explicit lowering (the verify oracle / a kernel-absent fallback), so this session's payoff is optimizer-basis closure (cost-from-decompose, re-fusion analysis, and harvest visibility now cover the SSM ops) — not a change to what actually runs.
+
+**Phase-2 blocker, recorded now so it isn't rediscovered as a surprise later: the SSM decomposes' slot-1 (`last_state`) view is currently UNWIRED, and its failure mode changes character once `Op::Scan` gets a kernel.** Both `selective_scan` and `ssd_chunk_scan`'s `decompose` preserve the 2-slot bundle contract for the primary output (`y`, slot 0, correct for general seqlen); realizing the secondary slot (`last_state`, slot 1) *through the decomposed graph* is a different story. **Today** it fails **loudly**: `Op::Scan` has no kernel, so any realize path that tries to run the decomposed graph at all hits a typed dispatch error, not silent garbage — the gap is consumerless (the executor always runs the fused kernel, which writes both slots correctly) and `last_state` remains recoverable via `unroll_scan`'s returned final-carry NodeId. **But once `Op::Scan` gets a native kernel in Phase 2**, that safety property inverts: a kernel-bearing `Op::Scan` node produces a real single-slot buffer (the stacked `ys`), and a naive `view(1)` reading past that slot-0 buffer for a `last_state` that was never composed into a second slot becomes a **live silent out-of-bounds read**, not a typed error. So **Phase 2 must wire the slot-1 view (a bundle-composer op, `Op::ScatterIntoSlot`, currently kernel-less — or explicitly drop the slot-1 claim) BEFORE `Op::Scan` gets a kernel**, not after. This is a build-order constraint on Phase 2, not a Phase-1 defect.
+
+**flash_attn's symbolic-`k_len` gap remains separately open.** G3's closure is scoped to the SSM `Scan` gap only. The 2026-07-03 entry's other documented basis gap — `flash_attn`'s decode with a **symbolic** (`Sym`) `k_len`, which needs a `DynScalar`-length slice primitive Fuel doesn't have — is untouched by this change and stays a documented, never-crash surfaced gap (the symbolic decode oracle remains the optimizer's `decode_flash` arm, which holds the `SymEnv` a `decompose` fn never sees). Readers of this entry should not infer "all basis gaps closed" — exactly one (the SSM `Scan` gap) closed today.
+
+**Phase 2 is a separate spec, not scoped here.** `Op::Scan.early_exit: Option<ScanPredicate>` is a Phase-1 field whose data-dependent early-exit *mechanism* is not built (`ScanPredicate` is a constructible unit placeholder, never `Some` on a live path; a path that would see `Some` returns a typed `Err`, never a panic). BPTT differentiability through a scan body (`Op::Scan` is `BackwardKind::NotDifferentiable` in Phase 1 — there is no generic decompose-backward mechanism to hook into; see the Phase-1 plan's genuine-ambiguity note) and a first consumer beyond SSM re-decompose (e.g. a Hopfield/associative-memory op, per `docs/frontier-paradigms-vision.md`) are likewise out of scope. All three are named Phase-2 work, tracked but not scheduled in detail by this entry.
+
+**Why**: the SSM `Scan` gap was the constitution's own canonical example of a basis gap needing a build-time `Op`-enum extension (G3), named explicitly rather than left implicit, because no primitive recipe over the pre-`Scan` basis was both total and numerically valid — the `O(seqlen)` unroll is unbounded and un-re-fusable, and the diagonal-SSM `CumSum` closed-form overflows for Mamba's negative decay (`a = -exp(a_log) < 0`). CireSnave chose to build `Op::Scan` now rather than wait for a consumer (per the standing "no consumer is not a reason to skip a capability, but it is a reason to sequence it" norm) because closing G3 unblocks the optimizer itself — a fused op that can't decompose breaks lower-to-base-map + find-best-cover, not just a downstream telemetry feature.
+
+**Alternatives considered**: *Force a lowering over the existing basis* (unroll or the closed-form) — rejected in the 2026-07-03 entry already, and `Op::Scan` doesn't reopen that question; it supplies the missing primitive instead of forcing a wrong one. *Widen `decompose`'s signature to `Result` to carry the Phase-2 early-exit gap* — rejected, consistent with the 2026-07-03 entry's reasoning: self-return-as-gap-marker (there, for a missing recipe) and typed-`Err`-as-gap-marker (here, for `unroll_scan` seeing `early_exit: Some`) both already express "surfaced gap" without a signature change. *Wire `BackwardKind::Decompose` for `Op::Scan` now* — rejected for Phase 1: `BackwardKind` is verified never read anywhere (the backward walk is a hand-written exhaustive match with no generic decompose-backward hook), so wiring it would be inert plumbing; `Op::Scan` gets a clean `NotDifferentiable` panic in the same infallible walk that already panics for `QMatMul`/`PagedAttn`, honoring "SSM stays non-differentiable in Phase 1" without inventing a mechanism nothing else uses.
+
+**Implications going forward**: (1) `decompose` is total over genuine primitives for the entire registered fused-op set; the base map has no more SSM-shaped opaque islands. (2) Phase 2 has three ordered obligations before it can wire an `Op::Scan` kernel: resolve the slot-1 view (compose or drop it), build the `early_exit` mechanism, and address BPTT differentiability — in whatever order a real consumer forces, but the slot-1 wiring specifically must land *before* the kernel to avoid the silent-OOB inversion described above. (3) A Hopfield/associative-memory consumer (per `docs/frontier-paradigms-vision.md`) is the next natural `Op::Scan` user beyond SSM re-decompose, and would be the first real pressure test of the `early_exit` mechanism. (4) `flash_attn`'s symbolic-`k_len` gap is the sole remaining documented, never-crash basis gap; closing it needs its own named primitive (a `DynScalar`-length slice), unrelated to `Op::Scan`.
+
+**Related artifacts**: `.superpowers/sdd/task-9-brief.md` (this doc task's brief) and the Op::Scan Phase 1 plan it summarizes; memory `recipe-grammar-codesign` (records CireSnave's build-now decision); the 2026-06-20 entry above (G3's original naming) and the 2026-07-03 entry above (the interim "documented basis gap" posture this entry supersedes for the SSM half only).
+
+---
+
+## 2026-07-15 — Increment 1: the verify reference is Fuel's OWN registered recipe (reverses Spec B's candidate-self-decompose reference)
+
+**Sections affected**: none bumped (verification-infrastructure behavior; like the 2026-07-14 Spec-B entry above it realizes the already-canonical 2026-06-20 JIT-loop goal — but it REVERSES one of that entry's documented deliberate deviations, so it is logged to keep the audit trail honest).
+
+**Phase / PR**: Increment 1 (recipe-identity verification + rope oracle, 11 commits, subagent-driven), merged to `capturedrun-4b-resume` @ `afc6ff32`, now on main. Key commits: `3c10505e` (`reference_from_registered_recipe`), `a8c7b201` (verify against the registered recipe + the `claimed_op` recipe-identity gate), `f35e8e99` (`by_pattern_hash` recipe-identity index + `register_runtime_fused` dedup), `e0cf3c45` (rope oracle), `f4a43565` (`adopt_runtime_fused` idempotent). Memory `increment-1-recipe-identity-complete`.
+
+**What changed**: `verify_candidate`'s numeric reference is now **Fuel's OWN registered recipe** — `reference_from_registered_recipe` builds `Op::Fused(claimed_op)` over the probe inputs, lowers it via `lower_to_base_map`, and realizes the primitives (`3c10505e`/`a8c7b201`) — instead of "a reference realized from the candidate's `decompose`" as the 2026-07-14 Spec-B entry shipped it (that entry's deliberate deviation (1)). Recipe *identity* is `base_map_hash` equality against the claimed op's registered recipe (`f35e8e99` — the NodeId-independent content hash as the identity pre-filter); `register_runtime_fused` dedups on it and `adopt_runtime_fused` is idempotent under region dedup (`f4a43565`). The rope scenario the Spec-B entry deferred now exists as a live oracle: a candidate claiming `FusedOps::ROPE` is verified against Fuel's rotate-half recipe realized as a primitive graph, so baracuda's interleaved `rope_apply` is REJECTED, not adopted (`e0cf3c45`) — the "non-`PatternNode` reference path" is the registered-recipe path itself (resolving memory `rope-not-patternnode`).
+
+**Why**: the Spec-B reference had a self-certification hole — verifying a candidate against its *own* `decompose` proves internal consistency, not that the kernel computes the op Fuel means by that `FusedOpId`. A wrong-but-self-consistent kernel (the interleaved rope is the live example) would pass. Verifying against Fuel's registered recipe makes the verdict mean "this kernel computes Fuel's op."
+
+**Alternatives considered**: keep the candidate-decompose reference and add a separate semantic gate (rejected — two half-oracles; the registered recipe IS the semantic definition, so verify against it directly); a hand-written CPU reference per fused op (rejected — the registry recipe already exists for every fused op by the G1/G2 invariant, so no second authority is needed).
+
+**Implications going forward**: (1) this resolves the 2026-07-14 Spec-B entry's deferred alternative ("extending `verify_candidate` with a non-`PatternNode` reference path + re-exposing `rope_apply`") — the reference path is now general over any registered recipe realizable on the base map, not `PatternNode`-elementwise-only. (2) The Spec-B carried limitation (a) — the reference realizes through Fuel's OWN backend and probes only `[-0.5, 0.5)` — REMAINS, still targeted by the 2026-07-14 KISS adopt-from goals 3/4/5. (3) Recipe identity by `base_map_hash` is the shared Fuel↔Baracuda identity rule offered in the recipe-grammar co-design (Q3).
+
+---
+
+## 2026-07-16 — `Op::Scan` Phase 2: `early_exit` mechanism + BPTT differentiability + Hopfield consumer (two of three obligations closed; slot-1 stays open, no kernel added)
+
+**Phase / PR**: Op::Scan Phase 2 (9 tasks). Code: `fuel-graph/src/scan.rs` (`unroll_scan` peels + ignores `early_exit`; `parse_scan_layout` + `build_scan_step`), `fuel-graph/src/lib.rs` (`Tensor::scan_until`; `lower_scans_for_backward` backward pre-pass; N-ary `Op::Concat` backward arm; `Op::Scan` backward arm → defensive guard), `fuel-graph/src/registry/{selective_scan,ssd_chunk_scan}.rs` (`BackwardKind::NotDifferentiable → Decompose` + docs), `fuel-core/src/hopfield.rs` (`drive_scan_until_final_f32` step driver + `hopfield_retrieve`), numeric BPTT + convergence + gradient tests in `fuel-core/src/{lazy,hopfield}.rs`.
+
+**What changed** — the three Phase-2 obligations the 2026-07-15 entry named (its **Implications** item 2) are addressed as follows:
+
+1. **`early_exit` mechanism — BUILT.** The convergence predicate is carried as one extra **trailing input** when `early_exit = Some` (`inputs = [init_carry, xs.., consts.., body_new_carry, body_y, pred_exit]`); `ScanPredicate` stays a unit marker (its `Some`-ness = "peel one extra trailing input"), so `base_map_hash` / reachability hash the predicate for free and `op_key` needs no new arm. `pred_exit` is a scalar-`U8` sub-DAG over the carry (pre-step via `ScanPlaceholder{Carry,0}`, post-step via the shared `body_new_carry` node). `Tensor::scan_until` is the `Result`-returning builder (build-time predicate shape/dtype/placeholder validation). Forward realize routes a kernel-less early-exit scan to a host **realize-barrier step driver** (`drive_scan_until_final_f32`) that realizes body + predicate per step, feeds the realized carry forward as a fresh `Const`, and stops at the runtime convergence step — a data-dependent count under the static-capacity `bound` (the `03-ir` KV-cache runtime-offset discipline). A non-firing predicate runs to `bound` and stops (bounded, never an infinite loop).
+
+2. **BPTT differentiability — BUILT (the generic decompose-backward hook Phase 1 found missing).** `Tensor::backward` runs `lower_scans_for_backward` **before** its reverse topo order: it decomposes the SSM `Op::Fused(SELECTIVE_SCAN|SSD_CHUNK_SCAN)` recipes into `Op::Scan`, `unroll_scan`s every reachable `Op::Scan` to its static `bound` primitives, and rewires the `View` consumers, so the existing node-general reverse walk differentiates only primitives. The `Op::Scan` backward arm becomes a **defensive `panic!` guard** — `backward() -> GradMap` is infallible (no Err channel), so this matches the QMatMul/PagedAttn "no backward" precedent in the same walk; it is unreachable via the public builders (they always emit the `View` consumers the pre-pass's remap + never-hang guard lower away before the walk). The SSM registry `backward` flips `NotDifferentiable → Decompose` — but per the Phase-1 entry's own "**`BackwardKind` is verified never read**" finding, this flip is **intent documentation, not the mechanism** (the pre-pass replaces the nodes before the walk). BPTT is **truncated to the static `bound`**: the runtime `early_exit` predicate is forward-only and ignored by the build-time backward unroll (no implicit-function-theorem / deep-equilibrium gradients). Two real gaps surfaced and were fixed on the primitive path: the `Op::Concat` backward arm was binary-only (`unroll_scan`'s stacked-`ys` is N-ary — 1-input for seqlen 1) → generalized to N-ary; and a decomposed multi-output fused op's surviving slot-0 `View` emitted an `Op::ScatterIntoSlot` (no CPU realize kernel) into the gradient graph → the pre-pass now collapses slot-0 `View` consumers directly to the decompose output (slot 0 == the primary value per the multi-output authoring contract).
+
+3. **slot-1 (`last_state`) view — STILL OPEN, deliberately.** Phase 2 added **no `Op::Scan` native kernel** — Hopfield forward runs via the step-by-step unroll driver, BPTT via the unroll pre-pass, both over primitives that already have kernels. So the 2026-07-15 entry's build-order constraint is honored by *not triggering it*: with no kernel, the slot-1/`last_state` OOB stays a typed dispatch error, not a live silent out-of-bounds read. Wiring or dropping the slot-1 view (an `Op::ScatterIntoSlot` composer) remains the prerequisite for any *future* `Op::Scan` kernel — this phase neither needs nor resolves it.
+
+**First non-SSM consumer.** `hopfield_retrieve` — Modern (dense) Hopfield associative-memory retrieval, `ξ ← softmax(β·ξ·Xᵀ)·X`, `carry = ξ`, `early_exit = ‖Δξ‖ < ε`, `emit = Final` — is the first real `Op::Scan` user beyond SSM re-decompose and the first pressure test of `early_exit` (converges to the stored pattern and exits before the capacity `bound`) and of BPTT (`∂loss/∂X` matches finite differences). It composes matmul + softmax primitives with existing CPU kernels; no fused Hopfield op.
+
+**Why**: the 2026-07-15 entry named these as Phase-2 obligations "in whatever order a real consumer forces." A Hopfield consumer forced `early_exit` + BPTT together (energy-based associative memory *is* iterate-to-fixed-point over an attention-shaped update); slot-1 has no consumer here (Hopfield is `emit = Final`), so it stays sequenced behind the still-absent kernel per the standing "no consumer is a reason to sequence, not skip" norm.
+
+**Alternatives considered**: *Add an `Op::Scan` native kernel now* — rejected (out of scope + would flip the slot-1 OOB to a live silent read before the composer exists). *Set `BackwardKind::Decompose` and call it done* — rejected as the Phase-1 trap: the field is dead metadata, so the flip alone is inert; the pre-pass is the actual mechanism. *Register an `Op::ScatterIntoSlot` CPU kernel to realize the SSM gradient* — rejected in favor of the pre-pass slot-0 `View` collapse (correct because slot 0 == primary, and it keeps the kernel-less boundary; the ScatterIntoSlot kernel stays deferred to a real multi-output-training consumer). *Differentiate to the runtime convergence count* — rejected; the gradient graph is built statically, so BPTT truncates to `bound` (equilibrium/implicit-diff is a separate follow-on).
+
+**Implications going forward**: (1) `selective_scan` / `ssd_chunk_scan` are now differentiable (metadata + mechanism) — a Mamba training consumer no longer needs a bespoke `*_BACKWARD` fused op. (2) The `early_exit` step driver is a standalone `fuel-core` entry invoked explicitly, **not** auto-wired into `realize_f32` — auto-routing a plain `retrieval.realize_f32()` through the driver (detecting a `View` of an early-exit scan) is a documented follow-up gated on the plan-once/CapturedRun caching interaction. (3) `emit = All` early-exit (the valid-count capacity buffer) is still out of scope — the driver rejects it with a typed `Err`; Hopfield is `emit = Final`. (4) The slot-1 view + an `Op::Scan` native kernel remain the open Phase-3 pair, in that order.
+
+**Related artifacts**: `docs/superpowers/plans/2026-07-15-op-scan-phase2-early-exit-differentiability-hopfield.md` + its design spec; the 2026-07-15 entry above (the three obligations this entry addresses); `docs/frontier-paradigms-vision.md` (the Hopfield/energy-based-memory bucket this consumer opens).
+
+## 2026-07-16 — Convergence Increment A: `primitive_shape` single-source + full-parity `emit` + §6.19 canonical `OpAttrs`
+
+**What changed** — the recipe grammar's canonical form is now concrete machinery, hardening the recipe principle (03-ir §"two-direction recipe") rather than changing it:
+
+1. **`primitive_shape` is the single source of truth for the first-order primitive basis's shape+dtype.** `primitive_shape(op, &[Shape], &[DType]) -> Result<(Shape, DType)>` (`fuel-graph/src/shape.rs`) is called by BOTH the ~26 `Tensor` builders (they no longer each compute their own out-shape/dtype) AND by `emit` (`fuel-graph/src/runtime_fused.rs`). One shape authority per primitive → no builder-vs-emit drift (a `builders_agree_with_primitive_shape` no-drift guard locks it). It returns an honest `Err` (never panics) for basis-gap / higher-order / malformed inputs.
+2. **`emit` / `tag_to_op` / `validate_representable` grown to the full first-order op set** (was elementwise-only). `Op::MatMul` is now representable; the recipe machinery re-emits shape+dtype via `primitive_shape` with a panic-free fallback (`emit_region`, a public candidate-kernel-verification entry, is now total).
+3. **`OpAttrs` §6.19 canonical positional-blob serialization.** `OpAttrs` gained the missing param fields (Slice start/len, Cast dtype, Roll shift, Pad amounts/mode/value, keepdim); `to_canonical_bytes(op)` emits the KISS §6.19 canonical **length-prefixed positional blob** (empty schema = zero-length `[0,0,0,0]`), fixing a logged §2.A conformance gap.
+4. **Byte-for-byte `emit == registry::{softmax,rope,layer_norm}::decompose` parity** (a recursive, order-sensitive structural check whose bite was sabotage-verified), so the recipe-emission path is cross-checked against the hand-written decompose oracles.
+
+**Sections affected**: `03-ir` **v0.7 → v0.8 (MINOR)** — adds `primitive_shape` as the single-source shape/dtype rule and the §6.19 canonical serialization to the recipe-principle machinery. Not a core-claim change: it *realizes* the already-pinned recipe grammar (the Fuel↔Baracuda recipe-grammar co-design, `docs/outreach/baracuda-recipe-grammar-codesign-reply-2.md`) as shipped infrastructure, the same way the 2026-07-14 Spec-B entry realized an already-canonical goal.
+
+**Phase / PR**: Convergence **Increment A** (7 tasks + review-fixes), merged @ `b5d20b2e` / `503832b3` (on `capturedrun-4b-resume`, now `main`). Design + plan: [`docs/superpowers/specs/2026-07-15-convergence-A-full-parity-emit-design.md`](../superpowers/specs/2026-07-15-convergence-A-full-parity-emit-design.md) + [`.../plans/2026-07-15-convergence-A-full-parity-emit.md`](../superpowers/plans/2026-07-15-convergence-A-full-parity-emit.md). Schema tables + `SEAM_CAP_RECIPE_IMPORT = FEAT bit 35` recorded in [`docs/specs/kernel-seam-interop.md`](../specs/kernel-seam-interop.md) §7.3.1–§7.3.2.
+
+**Scope / honest boundaries (what Increment A deliberately did NOT do — these are Increment C)**: `Op::MatMul` still serializes an **empty** `op_attrs` blob (roles implicit in operand shapes); the matmul role-vector serialization (co-design reply-3) lands in Increment C. The registry `decompose` → `PatternNode`-**data** migration (unifying Fuel's internal recipes with the external Baracuda-imported form) is Increment C. `reduce`/`gather`/`scatter` serialize a Fuel-side positional *subset* (`{axis[,keepdim]}`); `monoid`/`scatter_combine` ride `op_name` and index operands ride `child_edges` per the pinned node schema, while `oob_policy` + multi-axis `reduce_axes` lists are deferred pending their carriers. `op_to_attrs` is a matcher-driven projection, not a full `Op→OpAttrs→Op` round-trip (five axis-bearing ops project only when a matcher needs them).
+
+**Why**: realize the recipe grammar's canonical form as machinery now so (a) builder/emit shape logic has one authority, and (b) Increment C's decompose→`PatternNode`-data migration + Baracuda recipe import have a concrete §6.19 serialization + shape oracle to build on. Grammar pinned in the co-design; Fuel's representation conforms in A (machinery) then C (migration).
+
+**Related artifacts**: `docs/outreach/baracuda-recipe-grammar-codesign-reply-2.md` (the pinned §6.4-0009 schema) + `-reply-3.md` (matmul role-vectors, Increment C); memory `recipe-grammar-codesign`; the sequel is Convergence **Increment C** (this session).
+
+---
+
+## 2026-07-21 — Convergence-C: the shape-expression oracle ships (C-1 AST/codec/evaluator, C-2 role/index-woven kinds, C-3 cross-check activation)
+
+**Sections affected**: `03-ir` **v0.8 → v0.9 (MINOR)** — the section choice follows the Increment-A precedent above: Convergence-C realizes the externally-converged shape-expression grammar as machinery on the same recipe-grammar program (no core-claim change). `12-multi-output` is affected-but-NOT-bumped: C-3's bundle-slot differential *enforces* its existing slot-0 == `shape_rule` authoring contract (12 §"The authoring contract") at contract-validation time without changing that claim's scope.
+
+**Phase / PR**: Convergence-C, branch `convergence-c-shape-oracle` (series `6dfc3011`..`f87fd401`, merge `9156e178`, on main; work 2026-07-20/21). External convergence first: the KISS shape-expression-oracle RFC merged @ KISS `3bd6d2d` (2026-07-19, Fuel + Baracuda cosignatories); the Fuel-side ask carries a superseded banner @ `9f8b8347`. Plan: `docs/superpowers/plans/2026-07-21-convergence-c-c3.md`; reference: `docs/recipe-signature-reference.md`; memory `shape-oracle-rfc-accepted`.
+
+**What changed**:
+
+- **C-1**: shape-expr AST + the §6.20 wire codec, byte-matching the KISS golden vectors (`6dfc3011`, `fuel-dispatch/src/fkc/shape_expr.rs`) + the typed-decline decoder + gap-propagating evaluator (`ddd76207`); `eval_shape_rule` now evaluates the full `DimExpr` vocabulary with role-name authoring (`ae6b6300`) — `OutputDesc.shape_rule` was `same_as`-only before.
+- **C-2**: the role/index-woven kinds — reduce/gather/matmul + the §6.4-0011 `shape_consistent` tie (`8d8338e9`).
+- **C-3**: cross-check ACTIVATION — the oracle now cross-checks ~16 of the 22 registered fused ops (was 9): affine/attention-bwd/scan synth (`6ab8d679`), the matmul(a,b) whole-shape rule wired (`1e3d8a0f`), kernel-contract-doc `shape_rule` retargets (`daa806f3` FlashAttn/PagedAttn → `same_as(q)`; `ed7061af` cuda `causal_conv1d` off the inaccurate `same_as(x)`), and the adversarial-review fixes: warn-not-silent-skip + arity pre-check (`80c20a47`), GQA probe shape-distinctness so an operand-role swap is caught (`9c96a0f8`), the bundle-slot-vs-`output_views` differential (`f87fd401`).
+
+This **partially resolves the 2026-07-11 gap-audit's §5 finding** (return-contract validation): declared shape rules are now evaluated AND differentially cross-checked against the real registered functions for the expressible set. (Closure note for the audit's headline set as a whole: the `fix/fkc-gap-closure` merge `cf0c3ee2`, 2026-07-13, had already closed the §5 return-contract cross-check (`b1c33f91`/`8162f056`/`9f09a94a`), the §2.3 cost-AST pricing (`28ea2953`/`56b82d31`), and the V-FKC-9 import gate (`461c3bbc` + ledger `ece3c0e2`).)
+
+**Deliberate scope-out (C-4, tracked in ROADMAP)**: the reserved `TAG_DIMS=0x0B`/`TAG_WITH_DIM=0x0A` tags + param-value threading into `eval_dim` — the ~7 genuinely-inexpressible ops (`conv2d`, `conv_transpose_2d`, `qmatmul`, `nf4_matmul`, `fused_softmax_cross_entropy`, the two scan `last_state` slots) stay intentional `Ok(None)` skips, never false rejects.
+
+**Why**: Increment C's Fuel-side implementation was explicitly gated on the shape-expression grammar converging externally (the 2026-07-16 Increment-A entry above); KISS `3bd6d2d` closed that gate, so the oracle side shipped. The recipe-interior migration (decompose→`PatternNode`-data + shape-relative interior attrs + the flat-DAG-CSE serializer + matmul role-vectors) remains the narrowed Increment C (ROADMAP).
+
+**Alternatives considered**: ship the full C-4 `Dims`/`WithDim` vocabulary now (rejected — the seven ops have no cross-check consumer yet and the tags are reserved, so the honest skip is cheap and safe); silent-skip on evaluator gaps (rejected on adversarial review — `80c20a47` makes a skip a warning so a coverage regression stays visible).
+
+**Implications going forward**: (1) the shape-rule vocabulary is now shared Fuel↔KISS↔Baracuda machinery — the recipe-interior migration serializes into the same codec; (2) new fused-op contracts should author `shape_rule` in the `DimExpr` vocabulary (`same_as` is no longer the ceiling — and C-3 will catch a rule that disagrees with the registered function); (3) C-4 is the named successor for the remaining seven ops.
+
+---
+
+## 2026-07-23 — Convergence Increment C slice 1: recipe-interior foundations (shape-relative attrs, `decompose_via_recipe`, 5 migrations, matmul role-vectors)
+
+**Sections affected**: `03-ir` **v0.9 → v0.10 (MINOR)** — supersedes v0.9's "the recipe interior is untouched / a `PatternNode` still bakes absolute shapes" framing for the migrated set + matmul; follows the Increment-A/Convergence-C precedent (realizes the already-decided narrowed Increment C as machinery — **no core-claim change**: `decompose` stays total + never-panic + primitive→self, the primitive basis stays build-time-closed, the `FusedOpEntry.decompose` fn signature is unchanged). `04-optimization` is affected-but-NOT-bumped: its DecompositionMap contract (`fn(graph, node_id, params) -> NodeId`, total/never-panic/fixpoint) and the "lowering rule auto-generated from the registry decompose fn" claim both hold unchanged — the migration changed the decompose *body* (imperative → emit-of-static-data) and *spelling* (process-local `base_map_hash`), not a versioned claim there. `docs/recipe-signature-reference.md` (Part II §A/§C, not a versioned constitution doc) updated to as-built in the same change.
+
+**Phase / PR**: Increment C slice 1, branch `feat/increment-c-slice1`, base `main` @ `af4b7dd4`. Serial worktree, TDD, T1–T10 (`fbe96f0d`..HEAD). Plan: `docs/superpowers/plans/2026-07-23-increment-c-slice1.md`; memory `recipe-grammar-codesign`. Gates green: `fuel-kernel-seam-types` (18 tests), `fuel-graph` (396 tests).
+
+**What changed**:
+
+- **T1**: the `shape_expr` grammar (`Dim`/`ShapeExpr` AST + §6.20 wire codec, byte-identical) moved to its permanent dependency-free home `fuel-kernel-seam-types/src/shape_expr.rs`; `fuel-dispatch/src/fkc/shape_expr.rs` is now a `pub use` shim so `fuel-graph` can carry the vocabulary on `OpAttrs` (`fuel-graph` cannot depend on `fuel-dispatch`). A **three-carrier width pin** (`three_carrier_width_pins_stay_distinct`) names each carrier so a future consolidation cannot silently unify them: (a) node-envelope op_attrs = **u32-LE** outer; (b) KISS-Grammar §6.8-0007 region-node-table op_attrs sub-block = **u16-LE** (empty = `0x0000`); (c) §6.20-0005 shape-expr child length = **u16-LE**.
+- **T2/T3 (D2/D3/D4)**: four optional shape-**relative** `OpAttrs` fields (`target_shape_rel`/`slice_start_rel`/`slice_len_rel`/`axis_last`, all `Default`-empty), a pure `resolve_rel_attrs(attrs, bind_shapes, child_shapes) -> Result<OpAttrs, RelAttrError>` (reuses `shape_expr::eval_dim`/`resolve_axis`, typed declines, never panics), a children-first resolving `emit`, and a `validate_representable` rel-probe. The rel fields are **deliberately NOT serialized this slice** (the §6.19 `broadcast_to`/`slice` arms stay ABSOLUTE; the node-envelope framing is KISS #67-gated — propose-first).
+- **T4**: additive `OpTag::MaxDim` (the D3 keepdim shrink-via-swap `ReduceMaxTo+Bcast → MaxDim+Unsqueeze+Bcast`), serializing the pinned reduce row (`i64(axis) ++ u8(keepdim)`, byte-identical to `SumDim` — monoid rides `op_name`), `#[non_exhaustive]`-additive.
+- **T5–T8**: a `decompose_via_recipe` bridge (any failure → `id` fixpoint, never panic — the G2 posture) + **5 registry `decompose` fns migrated to `OnceLock` static `PatternNode` data** (`softmax_last_dim`, `rope`, `rms_norm_last_dim`, `layer_norm_last_dim`, `softmax_last_dim_backward`), each shape- AND rank-polymorphic (lowers correctly at ≥2 different shapes). Rope's D4 pad keeps its EMISSION byte-identical to the legacy 11-node graph (CUDA decode's live rope-decompose path unaffected).
+- **T9**: the locked matmul role-vector `op_attrs` (`{Batch=0,FreeM=1,FreeN=2,ContractedK=3}`, u8/axis) serialize (`to_canonical_bytes` named arm + `put_u8_list` + `matmul_roles` helper) and resolve (`tag_to_op` cell — canonical → `Op::MatMul`, else surfaced honest-miss; empty → implicit-accept). Empty roles preserve the `[00,00,00,00]` golden (rank-polymorphic recipes stay implicit).
+
+**Adopted external agreements (injected, newer than the plan)**: (1) **per-carrier width pin** — the permanent conformance test pins widths PER-CARRIER, never as "the op_attrs width" (three coexisting framings, above); (2) **flip-withdrawal posture** — `flip` is NOT in the KISS-Ops closed registry (Baracuda #68 withdrew its reverse-scan recipe to an honest miss), so the `decompose_via_recipe` bridge/resolver treats unknown/non-registry op tokens as typed, telemetered honest-miss declines — never accepted, never a crash (reverse-scan spelling = semantics-absent until `flip` registers); (3) **Baracuda-confirmed golden** — the rank-2 matmul golden `0C000000|02000000|0103|02000000|0302` is the shared cross-producer contract; Baracuda has no near-term binary arm, so Fuel's serializer is first and the golden IS the contract. Recorded in `docs/outreach/increment-c-slice1-per-carrier-and-golden-adoption.md`.
+
+**Why**: the migrated recipes become portable data (polymorphic across shapes/ranks — impossible with baked absolute shapes), the shape-relative attr machinery exists end-to-end with the KISS-consistent vocabulary in its permanent home, and the locked matmul byte contract is live both directions — the coupled "decompose→`PatternNode`-data AND absolute→shape-relative attrs" change the recipe program was gated on, now realized for the first-order tranche.
+
+**Deliberate scope-out (slices 2–5, §9 of the plan)**: the remaining ~11 first-order migrations (PowI/Clamp/MaskedFill carriers, shape-derived scalar slots), the flat-DAG-CSE node/table WIRE serializer + maximal-CSE representation (KISS #67-gated), the `reduced_count` leaf, the scan flat form, and the §6.19 import decoder. All are legal to leave imperative — `FusedOpEntry.decompose` is unchanged.
+
+**Implications going forward**: (1) new first-order `decompose`s should be authored as `PatternNode` data via `decompose_via_recipe`, not imperative `&mut Graph` builders; (2) the rel-attr fields are the recipe interior's shape-relative carrier — the flat-DAG WIRE serializer (slice 4) will serialize them once KISS #67 pins the node envelope; (3) the matmul role-vector golden is the cross-producer contract of record — a future Baracuda binary arm verifies against it.
+
+---
+
+## 2026-07-24 — conv2d / conv_transpose_2d are NOT a primitive-basis gap (correction to the 2026-06-20 "recipe principle / total decompose" G2 example)
+
+**Sections affected**: **none bumped.** This is a decisions-log **CORRECTION** of a mis-classification, not a constitutional change. The `03-ir` build-time-closed-primitive-basis claim (G3) is *unchanged* — indeed reaffirmed: no `Op` variant is added. The `04-optimization` total/never-panic `decompose` contract (G2) is unchanged. Only the *classification* of two ops is fixed.
+
+**Phase / PR**: Increment C conv stream, slice CV0 (docs-integrity correction), branch `feat/incc-conv-im2col`. Design pass: `docs/superpowers/plans/2026-07-24-incc-conv-im2col.md`. Code touched: `fuel-graph/src/registry/{conv2d,conv_transpose_2d}.rs` module + `decompose` docs; the Increment-C decompose-migration plan-of-record (`docs/superpowers/plans/2026-07-24-increment-c-decompose-migration.md`).
+
+**What was wrong**: The 2026-06-20 G2 entry (decision 2, "`decompose` is TOTAL + never-panic + primitive→self") named its three then-panicking decomposes as `nf4_matmul` / `flash_attn` / `selective_scan`; it did **not** itself name conv2d. But under that G2 principle, `conv2d` and `conv_transpose_2d` were subsequently classified — in their registry module docs ("a genuine primitive-basis gap (G2, 2026-06-20)", needing a new `Op::Im2Col` / `Op::Col2Im`) and in the Increment-C decompose-migration plan-of-record ("BASIS-GAP — need a new PRIMITIVE Op") — as permanent self-returns awaiting a *new primitive*. **That classification was wrong.** Those docs weighed only ONE candidate lowering — the `Op::Slice` + `Op::MatMul` + `Op::Concat` synthesis, which does explode to `N·Hout·Wout` slice nodes and is correctly rejected — and overlooked the index-gather idiom.
+
+**The correction**: conv2d / conv_transpose_2d are fully expressible in the existing closed `Op` basis, with node count *constant* in the spatial size:
+- **im2col = `Op::IndexSelect`** (a strided gather) over the `Op::Pad`-padded, flattened spatial axis; the window→flat-index map is built from **`Op::Iota` + scalar arithmetic + `Op::Cast(U32)`** (integer-valued, exact in F32 for padded-spatial extent `< 2^24`). Overlapping windows just repeat index values — a gather reads a source position as many times as needed.
+- **col2im (conv_transpose_2d) = the adjoint = a scatter-add = `Op::IndexAdd` / `Op::ScatterAdd`** into a zero-init base (`MulScalar(0.0)` of a broadcast — no `Const` in a recipe), then an `Op::Slice` crop. `IndexAdd`'s `+=` semantics ARE the overlap-add.
+- the grouped / batched conv matmul is **`Op::MatMul`**'s batched (rank≥2, GQA-divisible batch-prefix) form; bias is a broadcast `Add`.
+
+This mirrors the CPU kernel, which is itself im2col + batched GEMM (`fuel-cpu-backend/src/conv2d.rs`). **No `Op` variant is added; the build-time-closed primitive basis is UNCHANGED.** So conv2d / conv_transpose_2d migrate to total `PatternNode` recipes like any other Increment-C op — gated by a **real-backend numerical-parity test** (`fuel-conv::conv2d_direct` for conv2d; the native CPU conv_transpose kernel for the transpose), because the toy in-order f64 parity interpreter (`eval_rope`/`eval_norm`) does not implement `IndexSelect`/`Iota`/`MatMul`/`Pad`/`IndexAdd`.
+
+**Contrast with G3 / `Op::Scan`** (the genuine basis extension): the SSM recurrence is *inexpressible* in the elementwise/gather basis (unbounded unroll; the CumSum closed form overflows for `a<0`), so it justified a new higher-order primitive. im2col has no such obstruction — it is ordinary indexing; a hypothetical `Op::Im2Col` would *itself* decompose to `Iota`+`IndexSelect`, so it fails the "irreducible base-map terminal" test and would be sugar, not a basis element.
+
+**What remains a genuine basis question**: `qmatmul` (sub-byte GGML bit-unpack + byte-reinterpret + block-layout) and `inplace_affine` (its destructive-aliasing contract) stay the two open basis-gap self-returns — separate from this correction. The Increment-C basis-gap count therefore drops from **4 to 2**.
+
+**Why**: the mis-classification would have justified a `03-ir` MAJOR basis extension (new `Op` variant, shape/dtype rules, CPU realize, GPU kernels-or-decline, `tag_to_op` arm + `OpAttrs` carriers, `base_map_hash` `op_key`) for *zero* expressive gain, and would have left two ops permanently opaque to base-map analysis (the exact G1/G2 opaque-island failure). Recording the correction keeps the audit trail honest and unblocks the conv family's recipe migration.
+
+**Related artifacts**: `docs/superpowers/plans/2026-07-24-incc-conv-im2col.md` (the design pass with the exact recipe shapes); the 2026-06-20 entry above (G2, whose example this corrects); the 2026-07-16 Op::Scan-Phase-2 + 2026-07-03 entries (G3, the genuine basis extension this is contrasted against).
+
+---
+
+## 2026-07-28 — The consumer contract (new section 15) + withdrawal of the "inference center of gravity" claim
+
+**Sections affected**: **`15-consumer-contract` v0.1 (NEW)** — establishes the upward-facing half of fuel's boundary obligations. **`09-non-goals` v0.3 → v0.4 (MAJOR core-claim correction)** — "Not training-orchestration-flavored architecture decisions" replaced by "Not orchestration-flavored architecture decisions"; the claim that *"the architecture's center of gravity is inference"* is **withdrawn as wrong**. `00-index` v1.1 → v1.2 (section added to the set, cross-link map, reading order). `05-backend-contract` gains a see-also pointer to its new mirror; not bumped (no contract-claim change).
+
+**Phase / PR**: design pass — no code. Branch `docs/consumer-contract-section`. Motivating phase doc: [`docs/fuel-consumer-seam.md`](../fuel-consumer-seam.md) (pushed separately @ `a435109c`), which carries the per-class annexes, the as-built audit of `fuel-core/src/multi_session.rs`, and the open questions.
+
+**What changed**:
+
+- **Fuel now has two contracts, and both are written.** [05-backend-contract](05-backend-contract.md) governs what is *below* (backends advertise capabilities, costs, telemetry, slot capacity; they don't decide strategy). [15-consumer-contract](15-consumer-contract.md) governs what is *above*: fuel advertises capacity and reports measurements; the consumer decides whose work matters. The symmetry is deliberate — the new section is [01-identity](01-identity.md)'s "advertise, don't decide" applied one layer up with fuel in the advertiser's seat.
+- **The rule and its derivation.** Fuel owns mechanism; the consumer owns policy. The discriminator is three-way: selection among *equivalent implementations* is fuel's (arm selection), selection among *competing work* is the consumer's (value, not cost), selection among *different math* is the consumer's. The line is *derived* from cost fungibility rather than asserted — a layer can only optimize over a fungible cost unit, and fuel cannot compare one caller's work against another's.
+- **Seven clauses**: C-1 capacity advertisement, C-2 bounded quantum + cancellation, C-3 state externalization (with a lossy-vs-exact fidelity axis), C-4 measured cost and provenance, C-5 constraint admission (determinism/tolerance/device set prune the arm set), C-6 observation and intervention, C-7 declared mutation and in-process invalidation. Plus the matching refusals (no fairness/SLA, no admission, no work lifecycle, no multi-tenancy policy, no batching or eviction policy).
+- **Scope pin**: the contract governs *execution* consumers only. Export, surgery, merging, pruning, visualization, and static analysis consume the IR, not the runtime; they are governed by [03-ir](03-ir.md) + [13-interchange](13-interchange.md), and this contract is not to be grown to cover them.
+- **The `09` correction.** The prior non-goal justified excluding training orchestration from Foundation by asserting an inference center of gravity. **That premise was wrong** — fuel is general ML tooling, and inference engines, trainers, calibration pipelines, and scientific-computing consumers are peers. What survives, now stated symmetrically, is the real line: Foundation holds mechanism, orchestration is policy and lives above it, for *every* consumer class. Inference-side orchestration (batching policy, admission, session lifecycle, sampling policy, decode loops) is excluded on exactly the same grounds as the training-side list.
+
+**Why**: Lightbulb (an inference engine currently on Candle) will be ported onto fuel, and fuel has meanwhile shipped Increment 1 of a serving substrate (`fuel-core/src/multi_session.rs`). That made the boundary question concrete: without a stated rule, a scheduler making fairness decisions would land inside fuel, and the ported consumer would arrive with a second scheduler that loses to it. Writing the contract also surfaced the `09` defect — the inference-centrality claim is precisely what licenses building a mechanism to one class's guarantee and generalizing later, which C-3 demonstrates concretely (an evict/restore API shaped by inference's lossy, recomputable KV cannot serve a consumer needing exact restoration including RNG stream position).
+
+**Alternatives considered**: (a) keep the seam as a phase doc only — rejected: the refusals constrain future work and belong where a phase designer cross-checks scope; (b) extend `05-backend-contract` to cover both directions — rejected: the two seams have opposite polarity and merging them would obscure which party advertises; (c) fold the consumer classes into `02-layers` — rejected: layers describe crate dependency direction, not runtime obligations, and the clause-by-class applicability matrix has no home there; (d) state the rule without deriving it from cost fungibility — rejected: an asserted boundary invites relitigating every case individually, while the fungibility test settles them.
+
+**Implications going forward**: (1) mechanisms at this seam are specified against **at least two consumer classes with different guarantees** before they harden — the standing commitment that operationalizes consumer-shape neutrality; (2) the serving increment's remaining work is scoped by the clauses rather than by inference intuition — C-1/C-2/C-3 are absent today and C-4 is partial; (3) `SchedulePolicy` is confirmed *correctly* fuel's (its two arms are semantically equivalent — arm selection, not fairness), while `run_to_completion`, the implicit `Vec`-order FIFO, and `add_session`'s name are consumer-policy shapes to keep out of the interface; (4) a verified layer-drift defect is now on the record — `fuel-core/src/multi_session.rs` holds serving abstractions plus a `LlamaModel` dependency, three of the categories the ROADMAP layer table excludes from Foundation; (5) C-6 should be designed once, together with the unbuilt Phase-9 `RuntimeHook`, or it will need a second mechanism later.
+
+---
+
+## 2026-07-29 — The seam runs between Foundation and the orchestration tier, not around the workspace
+
+**Sections affected**: `15-consumer-contract` **v0.1 → v0.2 (MINOR)** — adds §Where the seam runs. `02-layers` gains an as-built note (no bump — factual clarification). No core-claim change: the refusals bind Foundation exactly as before.
+
+**Phase / PR**: design pass — no code. Prompted by the first real consumer, the Lightbulb port session, within a day of §15 landing.
+
+**What changed**: §15's refusals ("fuel does not decide admission / eviction choice / fairness") were read as applying to every crate in the fuel repository, which put them in direct contradiction with `fuel-inference` — a shipped crate whose `scheduler.rs` self-describes as "a memory-aware inference scheduler with priority queuing and eviction-pressure admission control" and whose `eviction.rs` carries LRU / H2O / weighted-voting policies. The resolution: **"fuel" in the refusals means Fuel-the-Foundation** — graph, optimizer, dispatch, backends. `fuel-inference` and `fuel-training` sit *above* the seam as optional consumer-side toolkits that happen to ship in the workspace. Adopting one is a consumer choice, never a contract obligation; policy shipped there is a default, not a commitment; and the refusals still bind Foundation absolutely. The stated test: if replacing it would require forking fuel, it is Foundation and the refusals apply; if a consumer can simply not depend on the crate, it is above the seam.
+
+**Why**: the ambiguity was real and load-bearing — a consumer planning a port could not tell whether adopting `fuel-inference`'s scheduler was required, forbidden, or optional, and the same repo appeared to both refuse and ship admission control. This is also the corrected [09-non-goals §Not orchestration-flavored architecture decisions](09-non-goals.md) working as designed: it names `fuel-inference` as exactly where inference-side orchestration belongs, so the crate was never the problem — §15's scope statement was.
+
+**Alternatives considered**: (a) declare `fuel-inference`'s scheduler a §15 violation and strip it — rejected: it is correctly placed per 09, and the refusals were the imprecise half; (b) widen the refusals to "Foundation crates only" without naming the toolkits — rejected: the consumer's confusion was specifically about *which* crates, so naming them is the fix; (c) move `fuel-inference` out of the workspace to make the boundary physical — rejected as disproportionate, and it would lose the batteries-included benefit for consumers who want it.
+
+**Implications going forward**: (1) a consumer bringing its own scheduler, eviction policy, and admission control is fully conformant — nothing above the seam is required; (2) new policy-bearing code belongs above the seam, and if it ever appears below it that is a defect regardless of convenience; (3) `fuel-inference` is unit-tested (153 tests) but has **zero consumers** — the first integrator should expect integration bugs unit tests don't catch, and "tested" must not be read as "proven".
+
+---
+
+## 2026-07-29 — C-6 has two regimes; hot-path observation needs a reduction, not an observation
+
+**Sections affected**: `15-consumer-contract` **v0.2 → v0.3 (MINOR)** — C-6 gains §Two regimes and an order of preference. No core-claim change: C-6 still obliges fuel to report the cost and never silently deoptimize; that obligation is now scoped to the regime where it is *sufficient*.
+
+**Phase / PR**: design pass — no code. Surfaced by the Lightbulb port session auditing its real value-extraction sites against the clause.
+
+**What changed**: C-6 was written around **occasional** observation — calibration, distillation, probing, debugging — where "naming an intermediate defeats fusion across it" is a one-time cost the consumer can evaluate, and fuel's obligation is to report it honestly. The audit found a second regime the clause did not anticipate: **hot-path observation at per-token, per-layer cadence on every request**, required by attention-driven KV eviction (H2O heavy-hitter accumulation, R-KV importance pruning). At that cadence, reporting the cost is not a resolution — the observation defeats fusion at every layer of every step and makes a captured region unformable, so **attention-driven eviction and captured replay are mutually exclusive** unless something changes. C-6 now states both regimes and an order of preference led by **express the reduction in-graph rather than observing the intermediate**: H2O wants a decayed running sum and R-KV an importance score, neither of which needs the raw scores, and a cross-step accumulator is structurally a KV write (a runtime-offset write into a persistent buffer).
+
+**Why**: a clause that silently mis-serves an entire consumer class is worse than a missing one, because the consumer builds on it and finds the collision late — here, only after building both an attention-driven eviction policy and a capture-shaped decode loop, the two things an inference host most wants. The audit also deflated the input that prompted it: of 73 value-extraction sites in the consumer, **49 were in `#[cfg(test)]`, ~5 were dead debug code, ~9 were legitimate realize boundaries, and only ~4 were a real design problem** — all four the same attention-observation issue. The eager→lazy port is mechanical; the residue is a contract question.
+
+**Alternatives considered**: (a) leave C-6 as written and let consumers discover the collision — rejected, that *is* the failure mode; (b) build a side-buffer observation mechanism that writes without breaking the captured region — kept as preference #2, but speculative and unbuilt, and preferring it would mean designing a mechanism before establishing the cheaper route fails; (c) declare attention-driven eviction incompatible with capture and stop — kept as preference #4, the honest fallback, premature while the reduction route is untested; (d) treat it under [07-tolerance](07-tolerance.md) — rejected, nothing here is a numerical-accuracy trade.
+
+**Implications going forward**: (1) a consumer asking to observe on the hot path should first be asked **what reduction it actually needs**, with raw-intermediate observation the fallback rather than the interface; (2) if the reduction route holds, H2O's cross-step statefulness moves from consumer bookkeeping into the graph, which changes the upstreaming picture in [`docs/fuel-consumer-seam.md`](../fuel-consumer-seam.md) A.4; (3) this is **design-level evidence, not a demonstrated result** — derived from reading consumer code against the clause, not from a running port, and the reduction-in-graph route is a strong conjecture a real port must confirm.
+
+**Update, same day — v0.3 → v0.4.** The port session supplied the exact H2O recurrence (`a_t[k] = Σ_q attn[q][k]`; `c_t = decay·c_{t-1} + a_t`, with `c` and `n` the only cross-step state, and `n` possibly derivable from slot position) and, more importantly, its own leading falsifier: **under a tiled-softmax flash kernel the `[q][k]` attention matrix is never materialized**, so a column-sum of it is not a reduction but a request for a different kernel. **[verified]** that is *conditionally* true and therefore sharpens rather than kills the route — `registry/flash_attn.rs:235` builds `scores = scale · (q · kᵀ)` as a real node on the **decomposed** arm, while the **fused** arm never writes it. So **observability is arm-dependent**, which makes a hot-path observation request partly a **C-5 arm-pruning question**: preference 1 may silently cost the fast arm (a measurable trade, which is C-5 and C-4 working as designed), and preference 2 is restated as **a second output from the producing op** — [12-multi-output](12-multi-output.md) territory, not a speculative side buffer. Not exotic: `flash_attn` already carries an optional `softmax_lse` in its signature (`:67`), so auxiliary attention statistics are an established shape for these kernels; emitting a column-sum is a backend ask for CUDA. General rule now stated in the clause: **before promising an in-graph reduction, check that the reduced value survives the arm the consumer wants to run on.** The consumer's other two falsifiers — runtime-offset accumulate may not compose with capture, and decay may need to be per-slot — remain open.
+
+---
+
+## 2026-08-08 — Baked state may be RE-BOUND under a guard: a third disposition, and its price
+
+**Sections affected**: 14 (Stage-5 NORMATIVE INVARIANT)
+**Phase / PR**: GAP-028
+**Bumped to**: 14 v0.10 → v0.11
+
+**What changed**: the Stage-5 invariant offered two ways to satisfy it for a
+thing a held plan bakes — put its identity in the validity key, or make it
+unable to change by construction. A third is now admissible: **re-bind it, under
+a guard that proves the replacement interchangeable.** Shipped for the KV
+allocation on the two `DecodeSession` carriers (`KvCache`, and `LatentKvCache`
+— MLA reuses `DecodeSession` verbatim).
+
+**Why**: GAP-014 closed the KV-allocation hole with invalidate-and-rebuild. That
+is correct, but it means a slot-pooled server pays a full plan REBUILD on every
+admitted request — forfeiting plan reuse measured at **223× on CUDA** — on the
+one path serving exists to make fast. The per-token data `Const`s already
+demonstrate the alternative: overwrite the entry in the held `base_cache` clone.
+The KV `Const`s can take the same treatment.
+
+**The price, stated plainly, because it is the whole content of this entry.**
+Dispositions 1 and 2 are **static**: a key comparison and a construction
+argument, neither of which can be wrong at runtime. Disposition 3 is **dynamic**.
+Invalidate-and-rebuild is safe *by construction* precisely because there is no
+guard to be wrong; re-binding replaces that with a guarantee that holds *by
+proof*. **If the guard is ever wrong, the failure mode is GAP-014 verbatim** —
+one request's tokens decoded over another's KV, at full speed, with a plausible
+distribution and nothing to report. The gap was originally filed by its own
+author as a "perf follow-up, NOT a correctness gap"; that framing was wrong and
+was retracted before implementation. A guard that rescues a plan is
+correctness-critical infrastructure, not an optimization.
+
+**What the guard checks, and against what.** Not the cache's description of
+itself — the storage **already baked into `base_cache`**, which is what the
+graph was actually optimized around and cannot drift from it the way a struct
+field can. Per slot: dtype, encoding (`SType`), bundling, backend variant, and
+byte extent. Byte extent is the load-bearing one — it collapses `batch ×
+n_kv_heads × max_seq_len × head_dim` into one comparison needing no
+reconstruction of the baked shape.
+
+**Residency is the exception, and it is why a new carrier exists.**
+`fuel_memory::Storage` exposes a backend *variant* but no device ordinal —
+`VulkanStorage` records none at all — so a same-geometry cache on a **different
+GPU of the same backend** is invisible from the bytes. It would pass every check
+above and be spliced into a graph whose placement stamps and residency
+`Op::Copy`s were baked for the old device. `KvCache` therefore records its own
+`DeviceLocation` at construction, where it is handed a `&Device` and residency is
+known for certain; `with_dims` and `set_layer` set it to `None`, and **`None`
+means refused, never CPU-by-default**.
+
+**The capture dies on a re-bind exactly as it dies on a drop.** The invariant's
+second half is not relaxed by disposition 3. A `CapturedDecodeSession` records a
+CUDA graph over FIXED device addresses drawn from `base_cache`, and a re-bind is
+precisely the act of changing some of them. Readers are retired on the *verdict*
+(anything but `Valid`) rather than on the outcome — a capture is worthless
+whether the re-bind then succeeds or is refused, and keying on the verdict keeps
+reader-before-owner ordering true without depending on a result that is not known
+yet.
+
+**One predicate, not two.** A caller needs to distinguish "everything matches"
+from "everything matches except the allocation". The obvious shape is an
+`is_valid_ignoring_alloc` twin, which would leave two comparison lists to keep in
+sync — the exact drift that made the staleness check a shared free function
+rather than a per-model copy. Instead `is_valid_for` became a view over a single
+`validity_for` returning `Valid` / `AllocationChanged` / `Stale`, and all four
+model paths route through one `refresh_decode_session` decision point.
+
+**Alternatives considered**: (a) fold residency into `shape_key` — rejected,
+`shape_key` names the MODEL and a cache is not part of model identity, and
+overloading it would make a model-identity bug and a residency bug
+indistinguishable; (b) derive residency from the storage — rejected, not
+derivable (see above), and a check that silently degrades on one backend is worse
+than no check; (c) apply disposition 3 to the paged carrier too — **declined,
+and recorded as a decision rather than an omission**: in paged serving one pool
+is shared across many sequences and per-request variation rides `block_table`,
+which already re-binds per token, so a pool swap is a server lifecycle event
+rather than an admission-path one. The obligation is only worth accepting where
+the rebuild it avoids is on a hot path.
+
+**A method note worth more than the feature (sabotage 3).** Three sabotages were
+run against the finished implementation, recompilation confirmed on each: gutting
+the re-bind failed the E2E logit oracle at maxdiff 1.032e-1 against a 1.337e-1
+history separation; treating unprovable residency as agreement failed the
+disposition test; **making the storage fingerprint always agree failed nothing.**
+That third result located the real hole. `incompatible_cache_swap_is_rejected_not_rebound`
+survived all three because its lever is `max_seq_len`, which `validity_for`
+rejects as *structurally* stale — so `rebind_kv` is never reached. It had been
+written as the negative control for exactly this feature, with a note predicting
+it would "become load-bearing once the implementation lands." **It provably could
+not.** Two lessons: *a sabotage that catches nothing is a finding, not a wasted
+run* — the two that fired only confirmed the tests work, while the one that did
+not fire identified which test was decorative; and *"this test will start
+covering X later" is a prediction, not a fact*. The repair added an arm at the
+same `max_seq_len` with doubled `kv_heads` — invisible to every structural field,
+since `shape_key` describes the model and not the cache — plus an explicit
+precondition assertion that `validity_for` returns `AllocationChanged`, so the
+test **fails if it ever stops exercising the path it claims to** rather than
+rotting quietly the way its predecessor did. Sabotage 1 also showed the
+disposition-level test cannot see a wrong re-bind at all (`Rebound` and the
+alloc_id re-key both survive a gutted implementation); only the logit oracle can.
+Two tests that look mutually redundant covering disjoint things is more dangerous
+than an obvious gap, because the apparent redundancy invites deleting one as
+cleanup — both sites now say so in a comment.
+
+**Both carriers are tested, not inferred.** MLA reuses `DecodeSession` verbatim,
+so the guard reaches `LatentKvCache` by construction — which is precisely the
+reasoning that left all three carriers welded through the whole of GAP-014 with
+only the contiguous one under test. Sharing an implementation is a reason to
+*expect* a property, never evidence of it. The latent carrier therefore gets its
+own both-halves test with its own negative control, sabotage-verified at maxdiff
+2.452e-2 against a 2.009e-2 history separation.
+
+---
+
+## 2026-08-07 — Runtime value memoization is DECLINED; invariance is a declaration, not a cache
+
+**Sections affected**: none normatively (records a decision *not* to build)
+**Phase / PR**: token-invariance census (`56843728`, corrected `dd98aa23`)
+**Bumped to**: no section bump — this entry is the record
+
+**What was decided**: Fuel will **not** build runtime value memoization — a
+cache keyed on "these inputs are unchanged since the last call." The capability
+was proposed as a way to skip recomputing loop-invariant nodes across decode
+tokens, and as a candidate to standardize into KISS so kernel generators could
+emit against it. Declined on both counts.
+
+**Why — two independent reasons, and the second is the one that must survive**:
+
+1. **No harvest, measured.** A token-invariance census of a decode step
+   (fuel-core, RTX 4070) found 168 nodes: 127 varying, 41 invariant. The 41
+   decompose as **21 `Const` + 20 `BroadcastTo`**, and the count of invariant
+   nodes that **materialize** is **zero**. The `Const`s are weights `base_cache`
+   already hoists; `BroadcastTo` is `WorkItemKind::ViewOf`, whose output `Arc`
+   aliases its input — no allocation, no launch. There is nothing in today's
+   decode graph a value cache would save. (An earlier claim that all 41 were
+   `Const`s was **inferred, never measured, and wrong**; corrected at
+   `dd98aa23`. The census is the instrument, not the anecdote.)
+
+2. **It is unsound as specified, not merely unprofitable.** `inference_context.rs`
+   binds pool K/V `Arc`s once and **mutates them in place**. Any cache keyed on
+   "inputs unchanged" is therefore wrong *by construction* — the input identity
+   is stable while its contents change — and the failure mode is a **silent wrong
+   answer**, not an error. Reason 1 invites "but maybe later, on another model";
+   reason 2 does not.
+
+**What replaces it**: the distinction between two things both called
+"memoization". *Value memoization* (runtime cache, equality-keyed) is declined
+above. ***Invariance declaration + optimizer hoist*** — where the kernel or graph
+**declares** which operands are loop-invariant and the optimizer hoists at
+**build time** — remains open and is the form a kernel generator can target,
+because a generator emits **structure**, not cache policy. It has no runtime
+equality check and therefore no silent-wrong-answer mode, which is the whole
+point. This is the constitution's standing preference for build-time validation
+applied to a case where the runtime alternative looked superficially equivalent.
+
+**Consequences**: a KISS/Unpopped proposal for an operand-invariance attribute
+plus a `prepare(invariant) -> state` / `step(state, varying)` split-kernel
+contract is **held, not abandoned** — pending evidence of a real consumer, which
+the F32 census cannot supply. Sending the ask first would repeat the error
+corrected at `dd98aa23`.
+
+**The obvious next measurement is NOT executable, and the reframe matters more
+than the original plan.** "Re-run the census on a quantized fixture" was the
+first proposal and it **cannot be done**: per GAP-029, `QuantizedLlama3Model`
+implements neither `DecodeModel` nor `PagedDecodeModel`, and *both* halves of the
+census depend on a decode session — the empirical half replays two tokens through
+`forward_with_kv_context_captured` and diffs retained intermediates, and the
+structural half seeds from the session's per-token nodes. No decode surface → no
+session → neither half ports. (Secondary, unverified: the quantized entry point
+is `QuantizedLlama3Model::from_gguf` and it is not known whether a synthetic
+fixture exists, so it may also need a real GGUF file.)
+
+**The right question for quantized is constant-foldability, not
+token-invariance**: are there **materializing** nodes whose transitive inputs are
+all `Const`? Weight-only dequant is exactly that shape. This is answerable by
+**walking a graph** — no decode session, no capture, no GPU — and it names the
+missing capability correctly: if such nodes exist and are not hoisted, the gap is
+**constant folding**, an ordinary and defensible optimizer feature, not
+"memoization." *Searched for an existing folding pass and found none under the
+obvious names* (`const_fold` / `constant_fold` / `fold_const`); the only hit,
+`fuel-graph/src/opt.rs:425 fold_const_bytes`, is a **CSE hashing helper**, not
+evaluation of constant subgraphs. Positive-controlled (the same style of query
+returns the real `optimize_graph` / `run_pass` entry points). **UNVERIFIED** that
+no such pass exists under a different name — establish that before treating
+"Fuel has no constant folding" as fact.
+
+## 2026-08-07 — KV allocation identity enters the decode validity key
+
+**Sections affected**: 14
+**Phase / PR**: GAP-014 (Tier A #2)
+**Bumped to**: 14 v0.9 → v0.10
+
+**What changed**: `decode_shape` gains `KvAllocId`, a process-global,
+never-recycled counter minted per KV **allocation**, and it is now a field of
+both `DecodeSession::is_valid_for` and `PagedDecodeSession::is_valid_for`. Three
+carriers mint and expose it: `KvCache`, `LatentKvCache`, and `DeviceKvPool`.
+This closes row 4 of the table the 2026-08-06 invariant tabulated — the last of
+the four.
+
+**Why**: a held plan's `base_cache` holds the KV storage `Arc`s bound on the
+first decode token, and neither `rebind_and_realize_prebuilt` nor
+`rebind_and_realize_paged_prebuilt` ever re-binds them. A held plan therefore
+reads and writes **the buffers it was built against**, whichever cache the
+caller passes. The pre-existing key was geometry plus model identity, so two
+same-shaped caches were interchangeable — which is not an edge case but the
+slot-pooled serving *happy path*: retire request A, admit B on a fresh cache,
+reuse the plan for speed, and B decodes over A's KV at full speed with a
+plausible distribution and nothing to report. The born-red end-to-end test
+measured the divergence at 1.03e-1 against a re-planned oracle, with the two
+histories 1.34e-1 apart.
+
+**Alternatives considered**: (1) *Re-bind the KV `Arc`s each token instead of
+invalidating* — strictly better for serving (a swap would cost nothing rather
+than a plan rebuild), but it is an optimization layered on a correctness fix,
+and it must prove the layouts match. Deferred, and noted as the follow-up; the
+conservative rebuild matches what every other key field already does.
+(2) *Fold the allocation into `shape_key`* — rejected: `shape_key` is documented
+as model structure + weight identity and is computed from the model, so every
+`decode_shape_key()` implementation would have to be handed a cache. Two
+identities that vary independently (one model, N concurrent allocations) belong
+in two fields. (3) *Pointer identity over the storage `Arc`s* — rejected for the
+same reason `ModelInstanceId` rejected it: a session does not pin the caller's
+allocations, so a freed address can be re-issued to a live object.
+
+**Implications going forward**: (1) the ALLOCATION-vs-conversation distinction is
+now load-bearing — `truncate_to` must preserve the id (speculative decoding's
+reject path would otherwise rebuild the plan on every rejected batch) while
+`clear`/`set_layer` must re-mint it; (2) a fifth violation of the invariant is
+still expected, and the lesson added to §14 from this one is that a violation is
+**wider than the site where it is noticed** — this was filed against one function
+and held in three carriers; (3) multi-session serving no longer has a known
+silent-wrong-answer hole on its happy path.
+
+---
+
+## 2026-08-06 — A held plan's validity key must cover everything it bakes (normative)
+
+**What changed**: [14-lifecycle](14-lifecycle.md) Stage 5 gains a **normative
+invariant** (doc v0.8 → v0.9): *a held decode plan may outlive anything it was
+baked against; its validity key must name every such thing, and every artifact
+derived from it must be retired with it.*
+
+**Why**: four violations were found **reactively in two days**, all the same
+shape — a held plan reused against state it was baked against but could not
+detect had changed. All silent, all full-speed, none a crash:
+
+1. **model identity, contiguous** — two same-shaped models shared a plan, so one
+   ran with the other's baked weight `Const`s. Closed by `decode_shape`'s
+   `ShapeKeyHasher` + `ModelInstanceId`.
+2. **the recorded CUDA graph** — a stale `DecodeSession` was dropped while its
+   `CapturedDecodeSession` survived, replaying over device addresses that no
+   longer described the live cache. Closed by `invalidate_decode_pair_if_stale`
+   (`a1ea9860`).
+3. **model identity, paged** — as (1) on `PagedDecodeSession`. Closed by
+   `d36ef0ac`.
+4. **the `KvCache`** — `rebind_and_realize_prebuilt` never re-binds `kv_nodes`,
+   so a fresh same-shaped cache is ignored and the plan keeps writing the
+   original's buffers. **OPEN**; owned by the FKC/decode-shape thread.
+
+(4) is why this is normative rather than a changelog: in a slot-pooled server it
+is reached on the **happy path** — retire request A, admit B with a fresh
+same-shaped cache — and the result is one request decoding over another's KV.
+
+**Rules stated, each earned by a specific failure**: identity not geometry;
+never-recycled counters not pointer identity (a session does not pin the
+caller's allocations, and the pin lives in another file's ownership behaviour, so
+a refactor that never touches the key can break it); and assert **both halves**,
+since "always stale" passes every correctness test while silently disabling plan
+reuse.
+
+**Sections affected**: [14-lifecycle](14-lifecycle.md) Stage 5 (v0.9).
+
+**Why it is in the lifecycle doc rather than next to the keying code**: the
+failure is committed by whoever **adds baked state to a session**, and that
+person has no reason to open the keying code. Four instances in two days predicts
+a fifth; this is addressed to whoever builds it.
+
+---
+
+## 2026-08-07 — Scalar completion: `Result` constructors (never-panic), scales real / packed `Err`, F8E6M2 authored-not-pinned
+
+**Sections affected**: 03 (IR — `Scalar`/`DType`).
+**Phase / PR**: GAP-002 (Scalar/DType completion), branch `feat/scalar-dtype-completion`.
+
+**What changed**: `Scalar::{zero,one,from_f64}` now return `fuel_ir::Result`
+instead of `panic!`-ing on the sub-byte dtypes — closing a standing never-panic
+violation. `Scalar` gains a real `F8E8M0(u8)` block-scale variant (OCP-MX
+decode). The three packed *element* formats (`F4`/`F6E2M3`/`F6E3M2`) return
+`Err` — they have no single-scalar representation (tensors dequantize whole).
+`F8E6M2` stays **token-only**: it is a scale, but its exact bit-encoding is a
+Fuel-local invention with no citable spec, so it is *authored-not-pinned* and
+deferred behind a consumer. A build-time guard rejects `MaskedFill` on any
+packed/scale dtype, which makes the `Scalar::zero` `Err` branch in the
+`MaskedFill` backward provably unreachable. Exhaustiveness is enforced by a
+wildcard-free `DType` witness plus a `catch_unwind` sweep over `DType::ALL`.
+
+**Why**: `DType` (the token space Fuel can name / parse / serialize) is a
+*superset* of `Scalar` (the values Fuel can compute with). Conflating them meant
+the constructors panicked on formats that are legitimately name-only. Never-panic
+requires the honest `Result`; and the block-scales genuinely have no zero
+(`2^(x−bias)`), so even a real scale variant must return `Err(NoZeroScalar)`.
+
+**Alternatives considered**: (1) an opaque-bytes `Scalar::Packed{bits}` variant —
+rejected: `to_f64` still can't yield a number, so it merely relocates the panic
+to the accessor, and no consumer round-trips a lone packed scalar. (2)
+`strum::EnumIter` for `DType::ALL` — rejected: a derived list is a *runtime*
+check, whereas a wildcard-free witness is a *compile-time* one (the constitution's
+"validate at build time"), and it keeps the pure-vocabulary leaf dep-free. (3)
+Authoring the `F8E6M2` encoding now — rejected: novel float semantics with no
+consumer, against the sequence-behind-consumers rule.
+
+**Implications going forward**: adding a `DType` now forces a deliberate `Scalar`
+decision (no wildcard arms) and a witness update, both at compile time. `F8E6M2`
+arithmetic is tracked as its own follow-up (the encoding must be *authored*, then
+cited) rather than lost. The `DType`-superset-of-`Scalar` model is now explicit.
+
+---
+
+## 2026-08-07 — The global kernel-binding table is copy-on-write
+
+**Decision**: `dispatch::global_bindings()` returns an owned
+`Arc<KernelBindingTable>` snapshot, not an `RwLockReadGuard`. The read guard is
+acquired and released *inside* the accessor. Writers clone the table, mutate the
+clone, and swap the published `Arc`, serialized against each other by a
+dedicated mutex that is **not** the table's `RwLock`.
+
+**Why**: the guard-returning form made a deadlock *representable*, and the
+codebase was holding it off by hand-maintained per-call discipline. std's
+`RwLock` blocks new readers once a writer queues, so a thread holding a read
+guard that requested a second read waited on a lock its own guard was blocking.
+The discipline was documented, correct, and still insufficient — because it is
+per-call-site, and the failure is *cross-thread*: every individual site can obey
+it and the process still deadlocks. This is the "existence ≠ enforcement — seams
+beat vigilance" pattern; the fix removes the guard rather than restating the
+rule. Measured: `--features cuda` lib tests hung at `-j24+`, pass at every
+thread count after.
+
+**Alternatives considered**: (1) *enforce guard scope structurally* — rejected,
+still a rule whose violation reproduces the deadlock. (2) *take the runtime-fusion
+adopt path off the write lock* — rejected, it does not fix the bug: the blocked
+writers were in the per-backend registration path, so the deadlock stays
+reachable via backend init while a reproducer built around adopt goes green.
+(3) `arc-swap` — deferred; the momentary read lock has not been shown to matter,
+and this keeps the crate dep-free.
+
+**Implications going forward**: an optimize pass is now a pure function of
+`(graph, table snapshot)`. Previously a pass could observe the table mutate
+mid-pass and emit a plan **not reproducible from its own inputs**, which would
+break the `base_map_hash` recipe-identity property Tier-2 convergence depends
+on — so this is a reproducibility repair, not only deadlock avoidance. Adoption
+affects *subsequent* passes by design; no path is known to want mid-pass
+visibility, but that is argued rather than exhaustively proven and should be
+re-checked if a pass ever needs to see its own adoptions.
+
+A second consequence is that panics can no longer poison the read path:
+`finalize()` runs off the `RwLock`, and its unwind discards the clone, leaving
+the published table at its last good value. This retires a real prior incident,
+not a hypothetical one.
+
+**Caveat worth carrying**: replacing a synchronization primitive requires
+enumerating what callers were getting from it *incidentally*. Here the
+runtime-fusion adopt path depended on the write lock for **check-then-bind
+atomicity** — a requirement recorded only as a comment on the caller, never as a
+property of the lock. A naive clone-mutate-swap would have passed the deadlock
+gate while silently reintroducing a duplicate-registration panic under a race
+the test suite does not reliably produce.
+
+---
+
+## 2026-08-08 — Never-panic on registration is met at the `finalize()` boundary, not by the signature
+
+**Decision**: `KernelBindingTable::register_full_with_source` stays **infallible**
+(`-> ()`). The never-panic requirement for kernel registration is satisfied by
+`finalize() -> Result<()>`, whose two callers are deliberately different and
+**must not be collapsed**: the **FKC import path propagates** (maps to a typed
+`FkcError::DuplicateKernelRef` and returns it), while the **hand-written
+static-table init path fails fast** (`.expect()`). FKC §10.10 is amended to say
+this; it previously mandated the signature change.
+
+**Why**: registration is append-only, so there is no per-call error to report —
+the duplicate-`KernelRef` condition is only detectable once, after all
+registrations, which is exactly what `finalize()` is. Forcing a `Result` on
+`register_full_with_source` would make every caller handle an error that cannot
+occur at that call, and **a `Result` that is always `Ok` is a false signal that
+trains callers to stop reading `Result`s** — strictly worse for never-panic than
+the honest infallible signature.
+
+The two-path split is the substantive half. A provider-supplied contract is
+**untrusted input**, so a duplicate there is a *rejectable contract* and must
+never crash the process. A duplicate in a checked-in static table is a
+**programmer error in Fuel's own source**, detectable only at init and
+unrecoverable at runtime; failing fast there is the deliberate choice. Collapsing
+them in either direction is wrong — propagating from init would invent a
+recovery path that cannot exist, and expecting on import would crash on
+third-party input.
+
+**Alternatives considered**: (1) *change the signature as the spec demanded* —
+rejected for the always-`Ok` argument above. (2) *leave the spec alone and treat
+the code as non-conforming* — rejected: the code is right, and a spec that
+asserts a MUST nothing satisfies erodes every other MUST in the document.
+
+**Implications going forward**: the defect this closes is **drift**, not the
+signature. The spec asserted one design while the implementation shipped
+another, both defensible, with nothing detecting the disagreement — for long
+enough that the clause still read "the actual de-panic lands with the importer
+implementation" after the importer had landed. It was found by the prose clause
+gate (`fkc_prose_clause_coverage.rs`), which exists precisely for MUSTs that
+bind something other than the validator and therefore raise no `FkcError`. The
+amendment keeps the superseded text inline rather than rewriting it, because the
+drift — not the outcome — is what a later reader needs to see.
+
+Note the claim is **narrower than it first reads**, and the amendment says so:
+never-panic holds on the *import* path; the init path panics by design. A
+summary that drops that distinction would be cited later as a general guarantee.
+
+## 2026-08-08 — Dummy `WithDType` placeholders deleted; a new dtype exists as a `Result`-declining `DType`+`Scalar`, never a panicking type
+
+**Sections affected**: none bumped — the placeholders were internal scaffolding, not a load-bearing claim; this entry records the removal of `pub` types + the durable prescription.
+**Phase / PR**: GAP-016(b) (design pass), GAP-002 family.
+**Bumped to**: n/a (removal of superseded internal types).
+
+**What changed**: The four dummy `WithDType` unit structs — `F4`, `F6E2M3`,
+`F6E3M2`, `F8E8M0` in `fuel-ir/src/dummy_dtype.rs` and its `fuel-core`
+re-export — are DELETED, along with **both** their impl sets: the
+`WithDType` / `num_traits` / `std::ops` impls in `dummy_dtype.rs` (17 textual
+`panic!` sites) and the `HostDType` impls generated by the `host_dtype_dummy!`
+macro in `fuel-ir/src/cpu_storage.rs` (2 more `panic!` sites, plus 2
+`Err`-returning arms per type). The only workspace references to the four
+types were these two definition sites; every other occurrence of those names
+is a `DType` / `HostBuffer` / `Scalar` enum variant, which is unaffected. (A
+textual sweep missed the `cpu_storage.rs` site — its `host_dtype_dummy!(crate::
+F6E2M3, …)` macro-argument form — and the actual compile is what surfaced it;
+the deletion-as-compile-check is the load-bearing evidence, not the grep.)
+
+**Why**: These were placeholder types anticipating future float formats,
+created to satisfy `WithDType`'s heavy numeric supertrait bound
+(`num_traits::NumAssign`) with panicking stubs — a never-panic violation on a
+production path (GAP-016). The durable point: they are a **superseded
+pattern**. The current, correct way for a not-yet-implemented dtype to exist
+and decline honestly is a `DType` variant + a `Result`-returning `Scalar`
+constructor (the 2026-08-07 Scalar-completion decision) + backend arms that
+return `UnsupportedDTypeForOp` — **not** a Rust type whose methods panic.
+`Scalar::from_f64` already returns `Result`; the dummy `WithDType` types were
+the last remnant of the old panic-placeholder approach.
+
+**Alternatives considered**: (i) *Make the `WithDType` methods return `Result`*
+— rejected as structurally INCOMPLETE: it can only reach the 3 `WithDType`
+methods, while the other ~14 panics are `std::ops`/`num_traits` impls with fixed
+signatures that cannot return `Result`; it also carries an order-of-magnitude
+ripple across every dtype and a half-migrated-trait hazard. (ii) *Make the
+dummies unconstructible* — rejected: `from_f64`/`zero`/`one` are associated
+functions that panic without an instance, so a private field buys nothing; only
+non-existence makes the panics unreachable by type. (iii) *Document them into a
+bucket-2 invariant* — rejected: "never instantiated" is unenforced convention,
+not a structural invariant. Deletion is the cheapest AND the only complete
+option; unlike GAP-095's structural option (64 literals, zero instances →
+parked), here structural is the low-cost path.
+
+**Implications going forward**: A new dtype must exist as a `Result`-declining
+`DType`+`Scalar` variant with backends returning `UnsupportedDTypeForOp` —
+**never** a `WithDType` type whose methods `panic!`. If `F4`/`F6*`/`F8E8M0`
+ever gain real numeric implementations, that is a fresh, correct `WithDType`
+impl over real bytes; the panicking placeholder contributed nothing toward it.
+Nothing structurally prevents re-adding a panicking placeholder — the intended
+enforcement is GAP-141's `panic!` ratchet (measured, not yet armed), and this
+entry's *why* is the interim protection. GAP-016 census: this removes the
+**~19 dummy-dtype stubs** the row already attributed to this family (17
+`WithDType`/num/ops + 2 `HostDType`), taking the production `panic!` surface
+**118 → 99** — nearly all of fuel-ir's 20.
+
+## 2026-08-12 — A decline carries TWO axes: what KIND of token it is, and WHY the capability is absent. They compose as two fields and never merge.
+
+**Sections affected**: none bumped — this adds a cross-cutting *idiom* for how declines are expressed; it changes no existing claim. Nearest homes are §11 (backend contract) and §15 (consumer contract), both of which already say backends advertise capability without making strategic decisions; this entry records HOW that advertisement is spelled when the answer is "no".
+**Phase / PR**: GAP-161 increment 1 (`625c6b4d`), GAP-155 (`4133df43`), GAP-171/177. Provenance: KISS #167.
+**Bumped to**: n/a (new idiom, no superseded claim).
+
+**What changed.** Fuel now expresses a decline as **two independent facts**, each with its own type in `fuel-ir`:
+
+- **KIND** — `TokenKind` (`fuel-ir/src/token_kind.rs`): a fact about a **token's membership in the interop vocabulary**. `Supported` / `RecognizedUnsupported` / `Reserved` / `Unknown`, a **total partition** of KISS sk4's 24 tokens (14 + 8 + 2 = 24), asserted against the standard's own list with the `Supported` side **derived** from `DType::ALL` rather than hand-listed.
+- **WHY** — `StorageStatus` (`fuel-ir/src/storage_status.rs`): a fact about **a `DType`'s capability on a backend**. `Present` / `Impossible` / `UnimplementedYet` / `UndefinedEncoding`, wildcard-free, with the **expiry information living in the variant** — only `UnimplementedYet` expires.
+
+**Why they cannot be one enum, and this is the load-bearing part: THEY HAVE DIFFERENT DOMAINS, so the separation is a type-level impossibility rather than a discipline anyone must maintain.** KIND classifies a `&str` — including strings that are not `DType`s at all. WHY classifies a `DType` already in the enum. **`StorageStatus` literally cannot be called on `"f8e4m3fnuz"`.** A single flat enum would have to pick which question it answers and lose the other.
+
+**The worked example, which is a live disagreement rather than an argument: `f8e5m2` is KIND=`Supported` (Fuel has the `DType`, the seam emits a legal sk4 token, Baracuda ships the matching `ElementKind`) and simultaneously WHY=`UnimplementedYet` (no `CudaStorageSlice` variant exists).** Both axes apply and give different answers, and **both are correct**. That case arrived by accident from an unrelated emit-side fix in another lane, which is what turned the two-axis design from a structural argument into a demonstrated necessity. (`f8e4m3fnuz` is KIND-only and cannot demonstrate it — a reserved token has no `DType` for WHY to classify.)
+
+**Per-backend FUNCTIONS differ; the TYPE does not.** `cuda_storage_status` is CUDA's authority; Vulkan/CPU/Metal get their own functions. The `StorageStatus` **type** lives in `fuel-ir` (a fact *about* a `DType`, zero new dep edges — all four backends already depend on it). Letting each backend invent its own status type would be the private-idiom defect one level up, and it is cheap to prevent on day one and a three-copy rollout to fix later.
+
+**What this replaces, recorded because the rejected forms were the obvious ones.**
+
+1. **A `decline_pending!` macro** — REJECTED. A macro can record a reason but cannot observe the capability arriving, so it produces better *documentation* of a hazard. Documentation is not a control; this is the same finding as the runtime-skip program (GAP-157), where a skip that declared itself in prose was invisible.
+2. **A canary over a hand-declared `(backend, dtype)` pair list** — REJECTED, and it was the architect's own proposal. It puts the decline (the arm) and its declaration (a list in a test) in **two separate acts**, which is exactly the state KISS #141 abolished with *"the skip mechanism and the declaration are now the same act."* Worse, its predicate could not observe the event: several dtypes already exist as raw-byte `CudaSlice<u8>` variants, so a canary asserting "no typed variant" would never move if storage arrived by that route. And the key was ill-typed — the same dtype is *present* at `transfer_to_device` and *declining* at a compute op, so storage and kernel are two populations.
+3. **A single flat enum** — REJECTED per the domain argument above.
+
+**The defect this is written against, and its precise name.** `fuel-cuda-backend/src/storage.rs` spelled **three distinct decline reasons in comments** — *"declines because no variant exists — NOT because the dtype lacks a representation… distinct from F8E6M2, whose encoding is unauthored"* — and returned the **identical** value for all three. The precise statement is **not** "the reasons were undocumented" (they were documented) and **not** "the mapping is non-injective" (a decline reason legitimately may be many-to-one). It is: **a distinction stated in prose MUST be carried in the type** — the author knew the distinctions, wrote them down, and shipped an interface that could not express them, so **the comment claimed a resolution the type did not have.**
+
+**The scoping rule that keeps this from over-reaching, because a universal version would be wrong: injectivity is MANDATORY where a mapping's output is an IDENTITY, OPTIONAL where it is a CLASSIFICATION, and for DIAGNOSTICS the rule is the prose-in-type one above.** `sk4_token` is an identity — a collision means two operand shapes share a `structure_key`, which is cache soundness. `map_element_kind` is a classification — **two Fuel dtypes legitimately COULD map to one backend kind if the backend does not distinguish them**, and requiring injectivity there would force implementations to invent distinctions their hardware does not have.
+
+**And the honest form of a lossy decline is permitted.** `fuel-metal-backend/src/storage.rs` joins six dtypes into one decline arm and is **correct**: the error is dtype-parameterised, and its comment claims only that the join *"asserts nothing false about the format"* — weaker, and true. It remains lossy (a consumer cannot tell *no storage yet* from *packed format, no addressable single element*). **Lossy-and-honest is fine; lossy-while-asserting-otherwise is the defect.** A comment that documents its own loss is rarer than one that is simply right, and more useful, because it tells the next reader what they may **not** conclude.
+
+**Stated limits, recorded in the code and not only here.**
+
+- **The storage authority is strong, not airtight.** Without a macro co-generating the `CudaStorageSlice` variants and the `Present` arms from one list, someone can wire storage via a non-gated site without flipping the central classification. The macro form is a later increment; the limit sits in `cuda_storage_status`'s own doc comment.
+- **A canary must probe on the SAME SIDE as the trigger.** Storage's only expiry trigger is Fuel-side — `CudaStorageSlice` is a Fuel enum, so no external bump can create storage. A Fuel-mirrored assertion is therefore complete *for storage*. Reused for an **externally**-triggered capability it is blind **by construction**: `ElementKind::U32` appeared in a dependency's vocabulary and a Fuel-side list could never have seen it. For those, the instrument is a **wildcard-free match over the external enum**, which becomes a compile error on a dependency bump — available only when that enum is not `#[non_exhaustive]` (`ElementKind` is not; `OpKind` is, and `fkc/lower.rs` already documents that the anchor is impossible there). **Availability is a property of the specific dependency, not a technique.**
+- **Sabotage coverage is recorded at the level it reaches.** The mechanism is sabotage-validated; the four repointed sites' live runtime paths are not — they are device-gated, and are covered instead by compile-level routing (the sites demonstrably call the shared helper; the old hardcoded errors are gone) plus transitive classification corruption. Closing that with a live GPU test was **declined**: it would rest on a fragile `Display`-through-`fuel_ir::Error` assertion, and a weak test where a compile-level proof already exists is worse than none.
+
+---
+
+---
+
+## 2026-08-15 — Precision claims are DERIVED, not asserted: `fill_unset_cpu_precision` retires and every backend earns `bit_stable` empirically
+
+**Sections affected**: none revised yet — this records the ruling and the program; section edits land with the work
+**Phase / PR**: GAP-096 answered; GAP-205/GAP-207 in flight
+**Ruled by**: CireSnave, 2026-08-15
+
+**What changed.** Fuel's precision commitment moves from *declared by a contract author and spot-checked* to *earned by measurement*. `KernelBindingTable::fill_unset_cpu_precision` — which stamped `PRIMITIVE_DETERMINISTIC_CPU` (`bit_stable_on_same_hardware: true`) onto every CPU entry left `UNAUDITED` — **is retired.** Every backend's kernels earn `bit_stable_on_same_hardware` through the same empirical route instead.
+
+**Why, and the measurement that made it decidable.** The FKC seam already refuses to let a contract self-certify: `verify::ledger::gate_precision` downgrades any declared claim lacking a passing `VerificationLedger` record keyed on `(backend, dtypes, kernel_revision_hash, claim)`. That gate **fires correctly and is then overwritten** — measured under GAP-077 @ `c81fcfab`: **636 CPU entries, 636 bit-stable, 636 owed to the fill, ZERO from a contract**, with **281 downgrade events at import** (re-measured 2026-08-14 as **303 events / 176 distinct tuples** — the recorded figure counted events and the corpus has since grown; both numbers were right about different constructs).
+
+**The reframing that decided it.** The bulk fill looked like it was covering something unverifiable, because CPU cannot be ULP-verified — `verify_precision_bound` compares a candidate invoker against a *reference* invoker, and **CPU is the reference the GPU backends are measured against** (`seed_vulkan_ledger:457`, `seed_cuda_ledger:397` both use `CpuInvoker`). But **`PRIMITIVE_DETERMINISTIC_CPU` asserts only `bit_stable_on_same_hardware`, and `verify_bit_stability` needs NO REFERENCE AT ALL** — invoke 16 times, require byte-identical output. **So the fill was never papering over an unverifiable property. It was papering over an unrun harness**, and the same scheme proves the claim on CUDA and Vulkan identically.
+
+**Consequence, stated rather than discovered.** Retiring the fill sends the entries it covered to `UNAUDITED` and fires the coverage lint — on the order of **~559 CPU entries** against 77 existing records. **That red is TRUE.** It is the honest state of a claim nobody had earned, and it closes as the seeding lands.
+
+**What this does NOT settle.** `max_ulp` / `max_relative` / `max_absolute` on CPU remain unverifiable by this route, because they are defined against *the IEEE-754 correctly-rounded result* and no higher-precision oracle exists in the tree. That residue is the scope of the derived-precision program (below) — and **its size is currently unknown precisely because the fill hides it.** Landing this produces the number.
+
+**Trigger.** A live instance surfaced by CI reaching Fuel's tests for the first time: six `masked_fill`/Vulkan keys reporting `UNAUDITED`, because Vulkan has no equivalent bulk fill and is therefore **the only backend where the seam's verdict has ever survived to a lint.**
+
+---
+
+## 2026-08-15 — The derived-precision program: a bound computed from a verified basis, not declared
+
+**Sections affected**: none yet — recorded as a costed option before any code
+**Phase / PR**: design pass — no code
+**Authorised by**: CireSnave, 2026-08-15, explicitly as a capability with no current consumer
+
+**The idea.** Every fused op carries a total, never-panic `decompose` into a **build-time-closed primitive basis** (~36 `Op` variants, 31 `decompose` impls) — the recipe principle, which exists for optimizer reasons and turns out to be the substrate for a precision proof. Verify the primitives against a higher-precision oracle; **derive** a bound for a composition by propagating those bounds through the recipe; then bound a fused kernel by comparing it against its own decomposition and adding the derived bar:
+
+```text
+|fused - true|  <=  |fused - decomposed|   +   |decomposed - true|
+                     measured                  DERIVED from the primitives
+```
+
+**Why Fuel specifically.** The closed basis and total `decompose` already exist. Almost no framework can state a precision guarantee that is *computed* rather than *asserted*; Fuel is unusually positioned because the prerequisites were built for an unrelated reason.
+
+**What already exists, measured 2026-08-15 — this is NOT from scratch.**
+- **The propagation model exists**: `jit_ingest.rs::advisory_ulp_band(region)` — *single exact op -> exact; multi-node exact-only -> `n_ops - 1`; transcendental-containing -> `Sum of per-op ceilings + (n_exact - 1)`*.
+- **The per-op ceiling table is NOT Fuel-authored**: `kiss_ops_vocab::Op::ulp_ceiling`, pinned, covering Exp/Log/Sin/Cos/Erf/Tanh/Sigmoid/Silu/Gelu/GeluErf/Rsqrt. Exact-class ops (including IEEE-correctly-rounded `Sqrt`/`Recip`) feed the `n-1` term instead; classification delegates to `ulp.rs::is_transcendental` as a single source.
+
+**What does NOT exist.**
+- **A higher-precision oracle.** Only `invoker_cpu`/`invoker_cuda`/`invoker_vulkan` implement `KernelInvoker`; there is no f64 reference. `fuel-cpu-backend` has 60 `F64` references, so f32-vs-f64 on a primitive is the cheapest credible oracle and is not yet wired.
+- **A runner for decompositions.** `KernelInvoker::invoke` takes a `BindingEntry` (one registered kernel); `decompose_via_recipe` mutates a `Graph` and returns a `NodeId`. **A `GraphInvoker` is the missing piece** — and it must route through the fallible `pipelined_bridge::realize_one_as::<T>()` path, never GAP-186's panicking `realize_*` accessors.
+
+**⚠️ The blocking decision, and it is not a wiring change.** `advisory_ulp_band` is **advisory by design**, and its own doc pins the reason: *"linear ULP addition is a first-order model — cancellation-heavy regions can exceed the band and flag spuriously."* Cancellation (subtracting near-equal intermediates) can make relative error unbounded. **Promoting an advisory band to a verdict is a decision about what a derived guarantee is permitted to claim, and must be made deliberately rather than inherited by wiring an advisory number into a verdict path.**
+
+**Two further limits recorded so they are not rediscovered.** Fusion *deliberately* changes arithmetic and is often **more** accurate than its decomposition (FMA, wider accumulators, unmaterialized intermediates) — so a large `|fused - decomposed|` does not identify which side is worse without the derived bar. And this route **can never produce a `max_ulp: 0` claim**: a fused kernel bit-identical to its decomposition would be coincidence, so byte-movers and exact ops still need direct verification.
+
+**Sequencing.** Explicitly behind blocking work. Its true scope is unknown until `fill_unset_cpu_precision` retires and the bit-stable seeding lands, because **what remains unverified after that is exactly the set that needs an oracle.**
+
+---
+
+## 2026-10-14 — `fuel-core` is dissolved (GAP-348)
+
+**Decision (CireSnave: dissolve, not rename).** The `fuel-core` crate no longer exists. Its public surface is re-exported by the `fuel` facade, by explicit name, from the crates that own each item. The two modules that were real code rather than re-exports (`error`, `utils`) are now thin modules in the facade over `fuel-ir` / `fuel-hardware` / `fuel-cpu-backend`.
+
+**What moved where.** Tensor/Device/lazy/judge/etc. -> `fuel-tensor`; errors/layout/shape/host buffers -> `fuel-ir`; probes/transfer cost -> `fuel-hardware`; topology -> `fuel-dispatch`; `Storage` -> `fuel-backend-contract`; `has_accelerate`/`has_mkl` -> `fuel-cpu-backend`; `bail!` -> `fuel-ir`. The ten backend features are owned by `fuel-tensor`, and the facade forwards to them 1:1 (`fuel/tests/feature_forwarding.rs` derives that rule from the manifests).
+
+**Consequences.** Version 0.19.0 (breaking: `fuel-core` is gone; a downstream that named it as a dependency must name `fuel` or the owning crate). The 29 integration tests that lived under `fuel-core/tests/` moved to `fuel-tensor/tests/`; the six torch/numpy fixture files that no test referenced were deleted.
+
+---
+
+## 2026-10-22 — Default placement is by accuracy claim, not by bit-stability (board 240, option D)
+
+**Sections affected**: 04, 07
+**Phase / PR**: board 240 (CireSnave: "On decision 240: D"); supersedes #426
+**Bumped to**: 04 v0.11 → v0.12, 07 v0.3 → v0.4
+
+**What changed**: the default filter chain's soft preference is now `AccuracyPreferenceFilter` (kernels meeting `DEFAULT_ACCURACY_BOUND`) in place of `BitStablePreferenceFilter` (bit-stable kernels only). Cost ranking then compares the survivors across devices. Bit-stable kernels count as reference-grade; a non-bit-stable kernel must carry a ledger-backed `max_relative`/`max_absolute` claim within the bound; a kernel with no claim does not win by default. Repeatability stays the separate opt-in `require_bit_stable`, unchanged. The Vulkan f32 matmul now declares a measured claim (`max_relative`/`max_absolute` 1e-3; worst measured 8.8e-5 / 2.3e-4 over 12 shapes), earned by `fuel-dev-tools seed-vulkan-accuracy`.
+
+**Why**: Qwen3-0.6B decode on Vulkan placed all 253 decode MatMuls on the CPU because the soft bit-stable preference ran across devices before cost ranking, and the Vulkan matmul is honestly not bit-stable (0.23 tok/s). A per-device preference (#426) fixed that but let any non-bit-stable kernel win on cost with no accuracy statement at all; option D asks for an accuracy statement instead.
+
+**Alternatives considered**: (A) per-device bit-stable preference (#426): admits kernels with no accuracy claim. (B) keep bit-stable-first: leaves GPU decode 13x slower by default. Both rejected by CireSnave in favour of D.
+
+**Implications going forward**: a kernel that should win placement on a non-bit-stable device needs a measured, ledger-backed accuracy claim; an unclaimed GPU kernel loses to a bit-stable CPU kernel in the default chain even when cheaper. The reference-grade treatment of bit-stable kernels without a numeric bound is an interpretation of "no accuracy claim" recorded here for ratification. Default-mode results are no longer bit-identical run to run where a claimed non-bit-stable kernel is placed.
+
+---
+
+## See also
+
+- [00-index §Versioning convention](00-index.md#versioning-convention) — when to bump section versions.
+- ROADMAP.md — phase-level work tracking.

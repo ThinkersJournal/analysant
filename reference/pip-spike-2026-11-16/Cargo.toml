@@ -1,0 +1,14 @@
+[package]
+name = "doc-analysis-spike"
+version = "0.1.0"
+edition = "2021"
+description = "Spike: claim-level multi-document discrepancy check (directed-but-untasked). Deterministic, std-only, no ML."
+license = "MIT OR Apache-2.0"
+
+[[bin]]
+name = "doc-spike"
+path = "src/main.rs"
+
+[lib]
+name = "doc_analysis_spike"
+path = "src/lib.rs"
