@@ -1,0 +1,1 @@
+- CI (build/test/clippy/fmt on three OSes, cargo deny, SPDX gate, portfolio CodeRipper), 12 empty crates at 0.0.1, PM rulings D2-D10 and slice 0 results recorded in `docs/SPEC-STEP1.md`.

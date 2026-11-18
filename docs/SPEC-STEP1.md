@@ -574,10 +574,11 @@ expressing the ROADMAP row pattern and the note-citation pattern), reproduce, pe
    checked that Fuel's history supports this replay.
 
 **Declared caveats about the oracle (so it is not over-trusted):** its precision is poor (472 of 764 absences remained ABSENT in code; 36
-of 37 contradiction pairs are noise, `spike/HANDOFF.md:28-29`), so Gate A proves **fidelity to a known, weak baseline, not quality**. The
-spike's own figures are Pip's and unreproduced by the lane: the HANDOFF claims 116 passing tests, while `grep -c '#[test]'` over
-`spike/tests/` and `spike/src/` finds 118 + 1 (the difference may be doc-tests, ignored tests or a different counting basis).
-**UNVERIFIED: I have not run the spike's tests or fetched the 51 MB code tree.** Gate A's first act (slice 0, section 6) is to run both.
+of 37 contradiction pairs are noise, `spike/HANDOFF.md:28-29`), so Gate A proves **fidelity to a known, weak baseline, not quality**. The spike's figures were checked by the lane on 2026-11-17 (slice 0, at the repo's `reference/pip-spike-2026-11-16` copy plus Fuel at `b0d74efa`,
+fetched as a tarball into a scratch dir, 951 `.rs` files, no `target/`): `cargo test` passes **116** tests (28+16+12+16+33+11 across the test
+binaries), 0 failed, matching the HANDOFF; the `grep -c '#[test]'` figure is 119 because 3 occurrences are string literals in `src/rust_code.rs:513`
+and `tests/rust_code.rs:246,289`, not tests. Run v9 (`cargo run --release`, the HANDOFF command) produces 2668 lines identical to the committed
+`runs/fuel-2026-11-16-v9.txt` (diff of 0 lines after CR stripping).
 
 ### 5.2 Gate B: the precision gate (modelled on CodeRipper's)
 
@@ -697,10 +698,17 @@ Each is an `[ASK]` to the PM (recommended answer first).
 | D9 | Whether Gate A's "Fuel as data only" may include a Fuel `project.toml` kept in this repo, or must live in the Fuel repo | in this repo under `tests/fixtures/`, as it is test data | slice 1 |
 | D10 | Whether claim `kind` stays a single enum or becomes a set (a sentence can be a decision *and* a directive) | single, primary kind plus lens-private tags, until a Gate B case needs more | slice 2 |
 
+**PM rulings, decided 2026-11-17, PM** (D1 stays CireSnave's; the strawman is the recommendation):
+- D2: Gate B projects are KISS (docs-heavy), PersistAnt (Rust library) and HumboldtUnifiedKidTracker (Rust application, PRIVATE: local clone only, publish aggregate counts only). Do not reuse CodeRipper's sample repos.
+- D3: ledger committed, merged by union on unique event ids. D4: markdown adapter in core behind a feature. D5: MCP and editing tools are separate projects.
+- D6: no model until a Gate B names a noise class tables cannot fix. D7: `.analysant/` at repo root.
+- D8: `syn` for items; read CodeRipper MOD-011 reachability code (origin/main, pinned SHA) before slice 5 and say what is reused.
+- D9: fixtures live in this repo but the 4 MB reference/ corpus is not duplicated: fixtures point at `reference/pip-spike-2026-11-16/corpus`. D10: single primary kind plus lens-private tags.
+
 ## 9. Unverified list (everything I did not check)
 
 - The spike's test count and that its tests pass (5.1): not run.
-- That `corpus/fuel/code/` can be fetched at `b0d74efa` and v9 reproduced: not run.
+- That `corpus/fuel/code/` can be fetched at `b0d74efa` and v9 reproduced: **done 2026-11-17** (section 5.1, caveats): identical output.
 - That Fuel's git history supports the pre-row-157 replay (5.1 item 5).
 - CodeRipper MOD-011 (2.6): not read; cited only from `docs/IDEAS-AND-DECISIONS-2026-11-17.md`.
 - The CodeRipper precision plan was read in the working tree, not at a pinned ref (5.2).
