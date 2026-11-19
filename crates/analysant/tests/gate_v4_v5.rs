@@ -278,3 +278,254 @@ fn rules_fire_in_the_spikes_order() {
     assert_eq!(doc("handle the `Rejected` variant"), Kind::Directive);
     assert_eq!(doc("memoization was declined"), Kind::Report);
 }
+
+/// The corpus does not exercise every lexicon entry, so the gate cannot pin them all. Each rule group
+/// is pinned here by an input that would take a DIFFERENT verdict without that rule (sabotage-checked:
+/// dropping the entry from its lexicon turns the assertion red). A bare list item defaults to a
+/// directive, so directive rules are pinned under a descriptive heading, where the default is a
+/// description; status rules are pinned on text that would otherwise be a directive.
+#[test]
+fn each_rule_group_is_pinned_by_a_synthetic_input() {
+    let en = English::new();
+    let lens = PragmaticLens::new(&en, Config::default()).unwrap();
+    let kind_of = |md: String, form: Form| {
+        let files = vec![("t.md".to_string(), md)];
+        let mut c = extract_corpus(&Markdown, &en, &mut Ledger::default(), &files);
+        classify_corpus(&mut c, &lens);
+        c.claims()
+            .find(|(_, c)| c.form == form)
+            .map(|(_, c)| c.kind)
+    };
+    let item = |text: &str| {
+        kind_of(
+            format!(
+                "# T
+
+- {text}
+"
+            ),
+            Form::ListItem,
+        )
+        .unwrap()
+    };
+    let described = |text: &str| {
+        kind_of(
+            format!(
+                "# See also
+
+- {text}
+"
+            ),
+            Form::ListItem,
+        )
+        .unwrap()
+    };
+    let name = |text: &str| {
+        kind_of(
+            format!(
+                "# T
+
+| H | I |
+|---|---|
+| {text} | x |
+"
+            ),
+            Form::TableCell,
+        )
+    };
+
+    // status markers beat a leading imperative
+    for m in [
+        "as-built",
+        "no longer",
+        "retired",
+        "superseded",
+        "deleted",
+        "gone",
+        "struck",
+        "survived",
+        "currently",
+    ] {
+        assert_eq!(item(&format!("add widgets, {m}")), Kind::Report, "{m}");
+    }
+    assert_eq!(item("add widgets, was a stopgap"), Kind::Report);
+    // outcome markers, and a date
+    for m in ["rejected", "withdrawn", "declined"] {
+        assert_eq!(item(&format!("add widgets {m}")), Kind::Report, "{m}");
+    }
+    assert_eq!(item("add widgets on 2026-01-02"), Kind::Report);
+    // modals, imperatives and prefixes beat the descriptive section they sit under
+    for m in [
+        "must",
+        "should",
+        "shall",
+        "needs to",
+        "need to",
+        "has to",
+        "have to",
+        "required to",
+    ] {
+        assert_eq!(
+            described(&format!("the pool {m} close early")),
+            Kind::Directive,
+            "{m}"
+        );
+    }
+    for v in ["add", "build", "write", "use", "verify"] {
+        assert_eq!(described(&format!("{v} widgets")), Kind::Directive, "{v}");
+    }
+    for p in ["TODO widgets", "[ ] widgets", "[x] widgets"] {
+        assert_eq!(described(p), Kind::Directive, "{p}");
+    }
+    // description signals, outside a descriptive section (a bare item would be a directive)
+    assert_eq!(described("widgets and gadgets"), Kind::Description);
+    assert_eq!(item("[widgets](x.md) and gadgets"), Kind::Description);
+    assert_eq!(item("rule seven holds always"), Kind::Description);
+    for o in ["the", "a", "an", "this", "these", "that", "each", "every"] {
+        assert_eq!(
+            item(&format!("{o} pool is large")),
+            Kind::Description,
+            "{o}"
+        );
+    }
+    assert_eq!(item("each pool are large"), Kind::Description);
+    // names: finite verbs and openings are sentences, each fragment rule is a fragment
+    for w in [
+        "is", "are", "was", "does", "will", "has", "must", "should", "cannot",
+    ] {
+        assert_eq!(
+            name(&format!("pool {w} large")),
+            Some(Kind::Description),
+            "{w}"
+        );
+    }
+    for o in [
+        "before start",
+        "between pools",
+        "after start",
+        "during start",
+        "until start",
+        "when ready",
+        "if ready",
+        "while idle",
+        "rule seven",
+        "not at all useful",
+    ] {
+        assert_eq!(name(o), Some(Kind::Description), "{o}");
+    }
+    for n in [
+        "v2 layout",
+        "few pools",
+        "only pools",
+        "no pools",
+        "never pools",
+        "lazily",
+        "populated early",
+        "loading data",
+        "not yet pools",
+    ] {
+        assert_eq!(name(n), Some(Kind::Description), "{n}");
+    }
+    assert_eq!(name("keep the pool"), Some(Kind::Description));
+    assert_eq!(name("pool runs hot"), Some(Kind::Description));
+    assert_eq!(name("per ending device"), Some(Kind::Description));
+    assert_eq!(name("per pool with sets"), Some(Kind::Description));
+    assert_eq!(name("pool refined for cells"), Some(Kind::Description));
+    for t in [
+        "at startup",
+        "each pass",
+        "per token",
+        "per input",
+        "mid realize",
+        "at dispatch",
+        "at runtime",
+        "per pass",
+        "at finalize",
+        "at realize",
+    ] {
+        assert_eq!(
+            name(&format!("pool work {t}")),
+            Some(Kind::Description),
+            "{t}"
+        );
+    }
+    for w in ["after", "before", "during", "until", "when", "while"] {
+        assert_eq!(
+            name(&format!("Pool state {w} start.")),
+            Some(Kind::Description),
+            "{w}"
+        );
+    }
+    // every descriptive section title, a status marker the corpus never reaches
+    for sec in [
+        "see also",
+        "where this lives",
+        "crate boundaries",
+        "what lives where",
+        "what's not in",
+        "quick reference",
+    ] {
+        let md = format!(
+            "# {sec}
+
+- widgets and gadgets
+"
+        );
+        assert_eq!(
+            kind_of(md, Form::ListItem),
+            Some(Kind::Description),
+            "{sec}"
+        );
+    }
+    assert_eq!(
+        item("add widgets, listed here as current until then"),
+        Kind::Report
+    );
+    // finite verbs that no sentence marker shadows
+    for w in [
+        "be",
+        "been",
+        "do",
+        "did",
+        "don't",
+        "can",
+        "could",
+        "may",
+        "might",
+        "need",
+        "needs",
+        "had",
+        "runs",
+        "ships",
+        "refines",
+        "salvages",
+        "changes",
+        "changed",
+        "live",
+        "diverge",
+        "reconverge",
+    ] {
+        assert_eq!(
+            name(&format!("pool {w} thing")),
+            Some(Kind::Description),
+            "{w}"
+        );
+    }
+    // each preposition after a predicative participle; a participle late in the phrase
+    for p in [
+        "at", "in", "on", "for", "with", "per", "from", "to", "by", "as", "after", "before",
+        "during", "into", "over", "under", "of",
+    ] {
+        assert_eq!(
+            name(&format!("pool refined {p} cells")),
+            Some(Kind::Description),
+            "{p}"
+        );
+    }
+    assert_eq!(name("pool used at cells"), Some(Kind::Description));
+    assert_eq!(name("none thing"), Some(Kind::Description));
+    // and plain names stay names
+    assert_eq!(name("Pattern harvesting"), Some(Kind::Name));
+    assert_eq!(name("Cache management"), Some(Kind::Name));
+    assert_eq!(name("per-tier free memory"), Some(Kind::Name));
+}
