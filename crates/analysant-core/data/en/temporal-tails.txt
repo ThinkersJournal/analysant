@@ -1,0 +1,11 @@
+# analysant-lexicon v1 | pack: en | multi-word tails that make a phrase a property in time, one tail per line
+at startup
+each pass
+per token
+per input
+mid realize
+at dispatch
+at runtime
+per pass
+at finalize
+at realize

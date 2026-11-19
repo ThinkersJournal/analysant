@@ -1,0 +1,18 @@
+# analysant-lexicon v1 | pack: en | prepositions
+at
+in
+on
+for
+with
+per
+from
+to
+by
+as
+after
+before
+during
+into
+over
+under
+of

@@ -1,0 +1,3 @@
+# analysant-lexicon v1 | pack: en | copulas
+is
+are

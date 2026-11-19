@@ -1,0 +1,7 @@
+# analysant-lexicon v1 | pack: en | section titles that describe rather than direct
+see also
+where this lives
+crate boundaries
+what lives where
+what's not in
+quick reference

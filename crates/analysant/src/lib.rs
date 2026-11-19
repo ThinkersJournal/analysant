@@ -4,7 +4,9 @@
 //! `analysant-lexical`. See docs/SPEC-STEP1.md.
 
 pub mod corpus;
+pub mod pragmatic;
 pub mod untasked;
 
 pub use corpus::{Corpus, Document, extract_corpus, extract_document};
+pub use pragmatic::{Partition, classify_corpus, partition};
 pub use untasked::{LENS, Outcome, Status, UntaskedRun, directed_but_untasked};

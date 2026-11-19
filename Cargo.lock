@@ -8,6 +8,7 @@ version = "0.1.0"
 dependencies = [
  "analysant-core",
  "analysant-lexical",
+ "analysant-pragmatic",
 ]
 
 [[package]]
@@ -44,6 +45,9 @@ version = "0.1.0"
 [[package]]
 name = "analysant-pragmatic"
 version = "0.1.0"
+dependencies = [
+ "analysant-core",
+]
 
 [[package]]
 name = "analysant-semantic"

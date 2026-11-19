@@ -9,3 +9,4 @@ shouting_percent = 80
 ident_max_chars = 80
 head_max_content_words = 8
 head_bold_min_words = 2
+copula_window = 8

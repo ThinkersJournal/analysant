@@ -1,0 +1,2 @@
+# analysant-lexicon v1 | pack: en | suffixes of a lone adverb (a one-word phrase ending so is not a name)
+ly

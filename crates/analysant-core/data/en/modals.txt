@@ -1,0 +1,11 @@
+# analysant-lexicon v1 | pack: en | modal phrases that mark a directive
+must
+should
+shall
+needs to
+need to
+has to
+have to
+required to
+must not
+should not

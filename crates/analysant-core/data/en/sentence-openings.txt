@@ -1,0 +1,13 @@
+# analysant-lexicon v1 | pack: en | openings of a clause rather than a name; prefix match, quoted where a trailing space matters
+"rule "
+"that is"
+"this is"
+"before "
+"between "
+"after "
+"during "
+"until "
+"when "
+"if "
+"while "
+not at all
