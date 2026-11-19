@@ -12,15 +12,9 @@ use analysant_core::{English, Form, Kind, Ledger, Markdown};
 use analysant_lexical::{AliasTable, MatchMode};
 use analysant_pragmatic::{Config, PragmaticLens};
 use std::fs;
-use std::path::PathBuf;
 
-fn reference() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../reference/pip-spike-2026-11-16")
-}
-
-fn read(p: PathBuf) -> String {
-    fs::read_to_string(&p).unwrap_or_else(|e| panic!("cannot read {}: {e}", p.display()))
-}
+mod common;
+use common::{cat, finding_line, read, reference, run_file, section, set_aside_line};
 
 struct Fixture {
     files: Vec<(String, String)>,
@@ -51,19 +45,6 @@ fn fixture() -> Fixture {
     }
 }
 
-fn run_file(name: &str) -> String {
-    read(reference().join("runs").join(name)).replace('\r', "")
-}
-
-fn section(text: &str, heading: &str) -> Vec<String> {
-    let mut lines = text.lines().skip_while(|l| !l.starts_with(heading));
-    assert!(lines.next().is_some(), "{heading} not in the run file");
-    lines
-        .take_while(|l| !l.is_empty())
-        .map(str::to_string)
-        .collect()
-}
-
 struct Stage {
     corpus: Corpus,
     run: UntaskedRun,
@@ -73,54 +54,18 @@ fn stage(fragment_rules: bool) -> Stage {
     let fx = fixture();
     let en = English::new();
     let mut corpus = extract_corpus(&Markdown, &en, &mut Ledger::default(), &fx.files);
-    let lens = PragmaticLens::new(&en, Config { fragment_rules }).expect("en carries the data");
+    let lens = PragmaticLens::new(
+        &en,
+        Config {
+            fragment_rules,
+            decision_outcomes: false,
+        },
+    )
+    .expect("en carries the data");
     classify_corpus(&mut corpus, &lens);
     let aliases = AliasTable::parse(&en, &fx.aliases);
     let run = directed_but_untasked(&en, &corpus, &fx.plan, &aliases, MatchMode::TokenSubset);
     Stage { corpus, run }
-}
-
-fn cat(form: &Form) -> usize {
-    match form {
-        Form::ListItem => 0,
-        Form::TableCell | Form::Bold => 1,
-        Form::CodeSpan => 2,
-        other => panic!("no such form in this corpus: {other:?}"),
-    }
-}
-
-fn finding_line(corpus: &Corpus, idx: usize) -> String {
-    let claims: Vec<_> = corpus.claims().collect();
-    let (doc, c) = claims[idx];
-    format!(
-        "  {}:{}  [{}] {}",
-        doc.path,
-        c.unit.source.span.line_start,
-        doc.section_path(c).join(" > "),
-        c.text
-    )
-}
-
-fn set_aside_line(corpus: &Corpus, idx: usize) -> String {
-    let claims: Vec<_> = corpus.claims().collect();
-    let (doc, c) = claims[idx];
-    let what = if c.form == Form::ListItem {
-        "Directive"
-    } else {
-        "Named"
-    };
-    let role = match c.kind {
-        Kind::Description => "Description",
-        Kind::Report => "StatusNote",
-        other => panic!("not set aside: {other:?}"),
-    };
-    format!(
-        "  {}:{}  [{what} / {role}] [{}] {}",
-        doc.path,
-        c.unit.source.span.line_start,
-        doc.section_path(c).join(" > "),
-        c.text
-    )
 }
 
 fn check(fragment_rules: bool, run_name: &str, absent: usize, per_cat: [usize; 3], aside: usize) {

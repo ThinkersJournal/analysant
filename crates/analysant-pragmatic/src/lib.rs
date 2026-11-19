@@ -52,12 +52,16 @@ pub struct Config {
     /// A bold phrase or table cell that reads as a sentence, a clause or a property statement is a
     /// description, not a name (the spike's "fragment" rules, its slice 2).
     pub fragment_rules: bool,
+    /// A claim recording the outcome of a decision (rejected, withdrawn, declined) is a status note, not
+    /// a directive (the spike's genre handling, its slice 4). Off reproduces the runs before it (v6).
+    pub decision_outcomes: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             fragment_rules: true,
+            decision_outcomes: true,
         }
     }
 }
@@ -243,7 +247,7 @@ impl<'a> PragmaticLens<'a> {
         if let Some(m) = self.phrase_in(&words, "status-markers") {
             return Some(Verdict::with(Role::Status, "status marker", m));
         }
-        if self.has_decision_outcome(&lower) {
+        if self.config.decision_outcomes && self.has_decision_outcome(&lower) {
             return Some(Verdict::new(Role::Status, "decision outcome"));
         }
         has_date(&lower).then(|| Verdict::new(Role::Status, "dated (YYYY-MM-DD)"))
