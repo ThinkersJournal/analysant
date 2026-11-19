@@ -1,0 +1,3 @@
+# analysant-lexicon v1 | pack: rust
+# the attribute that carries a cfg predicate
+cfg

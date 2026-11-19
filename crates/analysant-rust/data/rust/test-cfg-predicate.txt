@@ -1,0 +1,3 @@
+# analysant-lexicon v1 | pack: rust
+# the cfg predicate that is true only in a test build
+test

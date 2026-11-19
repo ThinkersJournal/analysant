@@ -10,7 +10,7 @@ and the two base libraries), published here for review before any code is writte
 
 Planned crates (names reserved on crates.io at 0.0.0): `analysant`, `analysant-core`, `analysant-lexical`, `analysant-semantic`,
 `analysant-pragmatic`, `analysant-epistemic`, `analysant-temporal`, `analysant-logical`, `analysant-deontic`,
-`analysant-discourse`, `analysant-ontological`, `analysant-structural`.
+`analysant-discourse`, `analysant-ontological`, `analysant-structural`, and (added in slice 5) `analysant-rust`.
 
 Licence: MIT OR Apache-2.0.
 

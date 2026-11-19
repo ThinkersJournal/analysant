@@ -1,0 +1,3 @@
+# analysant-lexicon v1 | pack: rust
+# functions the platform calls, so having no caller in the tree is not evidence they are dead
+main

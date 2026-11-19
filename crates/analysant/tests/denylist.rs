@@ -122,6 +122,7 @@ fn no_engine_source_hard_codes_a_project_or_a_word_list() {
         "analysant-core",
         "analysant-lexical",
         "analysant-logical",
+        "analysant-rust",
         "analysant",
     ] {
         rust_files(&manifest().join("..").join(krate).join("src"), &mut files);

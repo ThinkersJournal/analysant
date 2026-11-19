@@ -1,0 +1,3 @@
+# analysant-lexicon v1 | pack: rust
+# cfg combinator: the operand does not hold
+not
