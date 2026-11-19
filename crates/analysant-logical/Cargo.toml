@@ -1,9 +1,14 @@
 [package]
 name = "analysant-logical"
-description = "AnalysAnt: analysant-logical (placeholder; no API yet)"
+description = "AnalysAnt: the contradiction lens, which pairs a statement that denies a capability with one that asserts it, with sense-aware suppression"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+
+[dependencies]
+analysant-core = { path = "../analysant-core", version = "0.1.0" }
+analysant-pragmatic = { path = "../analysant-pragmatic", version = "0.1.0" }
+analysant-semantic = { path = "../analysant-semantic", version = "0.1.0" }

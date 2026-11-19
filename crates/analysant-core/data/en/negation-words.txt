@@ -1,0 +1,3 @@
+# analysant-lexicon v1 | pack: en | a negation word whose next word, when it is a bad word, makes the statement positive; the word is its own marker
+# Provenance: the reference spike's `never` rule (contradiction.rs:179).
+never

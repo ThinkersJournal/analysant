@@ -1,0 +1,3 @@
+# analysant-lexicon v1 | pack: en | a word that refuses the capability that follows it ("no network"); marker is `<word> <capability>`
+# Provenance: the reference spike's `no <capability>` rule (contradiction.rs:233).
+no

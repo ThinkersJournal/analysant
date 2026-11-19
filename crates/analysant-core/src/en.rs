@@ -41,6 +41,15 @@ const RULE_OPENERS: &str = include_str!("../data/en/rule-openers.txt");
 const ADVERB_SUFFIXES: &str = include_str!("../data/en/adverb-suffixes.txt");
 const GERUND_SUFFIXES: &str = include_str!("../data/en/gerund-suffixes.txt");
 const NOT_YET_PHRASES: &str = include_str!("../data/en/not-yet-phrases.txt");
+const NEGATION_BAD_WORDS: &str = include_str!("../data/en/negation-bad-words.txt");
+const NEGATION_PHRASES: &str = include_str!("../data/en/negation-phrases.txt");
+const NEGATION_WORDS: &str = include_str!("../data/en/negation-words.txt");
+const TEMPORAL_PHRASES: &str = include_str!("../data/en/temporal-phrases.txt");
+const TEMPORAL_WORDS: &str = include_str!("../data/en/temporal-words.txt");
+const REFUSAL_WORDS: &str = include_str!("../data/en/refusal-words.txt");
+const REFUSAL_EXEMPT_WORDS: &str = include_str!("../data/en/refusal-exempt-words.txt");
+const CONTRAST_SEPARATORS: &str = include_str!("../data/en/contrast-separators.txt");
+const PAIRING_STOPWORDS: &str = include_str!("../data/en/pairing-stopwords.txt");
 
 /// Parameters the extraction rules read. Checked once, at construction.
 const REQUIRED_PARAMS: &[&str] = &[
@@ -117,6 +126,15 @@ impl English {
         lexicons.add_lexicon("adverb-suffixes", ADVERB_SUFFIXES);
         lexicons.add_lexicon("gerund-suffixes", GERUND_SUFFIXES);
         lexicons.add_lexicon("not-yet-phrases", NOT_YET_PHRASES);
+        lexicons.add_lexicon("negation-bad-words", NEGATION_BAD_WORDS);
+        lexicons.add_lexicon("negation-phrases", NEGATION_PHRASES);
+        lexicons.add_lexicon("negation-words", NEGATION_WORDS);
+        lexicons.add_lexicon("temporal-phrases", TEMPORAL_PHRASES);
+        lexicons.add_lexicon("temporal-words", TEMPORAL_WORDS);
+        lexicons.add_lexicon("refusal-words", REFUSAL_WORDS);
+        lexicons.add_lexicon("refusal-exempt-words", REFUSAL_EXEMPT_WORDS);
+        lexicons.add_lexicon("contrast-separators", CONTRAST_SEPARATORS);
+        lexicons.add_lexicon("pairing-stopwords", PAIRING_STOPWORDS);
         if let Err(e) = lexicons.add_params("params", PARAMS) {
             panic!("en pack data is malformed: {e}");
         }

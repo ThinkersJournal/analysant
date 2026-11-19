@@ -1,0 +1,42 @@
+# analysant-concepts v1
+# The seed sense table for the reference project: the five generic words that carried 21 of the spike's
+# 37 contradiction pairs across unrelated meanings (spike-report-2026-11-16.md:334-340). Each sense's cues
+# are words that co-occur with that meaning in the corpus; the 21 pairs are this table's first negative
+# tests (crates/analysant/tests/gate_v8.rs). A cue the context does not contain leaves the word ambiguous,
+# and an ambiguous word suppresses nothing.
+
+concept budget
+forms: budgets
+status: active
+sense budget-tolerance | the numerical error a rewrite may spend | cues: tolerance
+sense budget-parallelism | how much parallel work the optimizer may use | cues: parallelism
+sense budget-device-bytes | the planner's byte budget for a device (PlanOptions) | cues: planoptions, vram
+sense budget-consumer-entitlement | the consumer-contract resource budget (C-5) | cues: consumer
+sense budget-placement | the memory condition in a placement fallback rule | cues: fallback
+evidence: spike-report-2026-11-16.md:334 (11 pairs, one negated side)
+
+concept harvest
+forms: harvests, harvesting
+status: active
+sense harvest-census | a runtime value census of a decode step | cues: census, memoization
+sense harvest-pattern | pattern harvesting for rule discovery | cues: pattern
+evidence: spike-report-2026-11-16.md:335 (4 pairs)
+
+concept lifecycle
+status: active
+sense lifecycle-work | the work lifecycle the consumer contract leaves undecided | cues: retry, streaming, handle | excludes: md
+sense lifecycle-document | the lifecycle document, cited by a link | cues: md
+evidence: spike-report-2026-11-16.md:336 (3 pairs; the positive sides are references)
+
+concept written
+status: active
+sense written-materialized | a value that is never written to memory | cues: never written
+sense written-by-hand | authored by hand | cues: hand
+evidence: spike-report-2026-11-16.md:337 (2 pairs)
+
+concept network
+forms: networks
+status: active
+sense network-connectivity | a computer network connection | cues: bundled, offline, package
+sense network-neural | a neural network | cues: neural
+evidence: spike-report-2026-11-16.md:338 (1 pair)

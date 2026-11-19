@@ -536,7 +536,7 @@ fn strip_parentheticals(text: &str) -> String {
 }
 
 /// True when the text contains a YYYY-MM-DD date.
-fn has_date(lower: &str) -> bool {
+pub fn has_date(lower: &str) -> bool {
     let chars: Vec<char> = lower.chars().collect();
     chars.windows(10).any(|w| {
         let d = |i: usize| w[i].is_ascii_digit();

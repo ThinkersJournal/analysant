@@ -1,0 +1,5 @@
+# analysant-lexicon v1 | pack: en | single words that mark a retraction or decision outcome, matched standalone
+# Provenance: carried from the reference spike (reference/pip-spike-2026-11-16/src/contradiction.rs:366), same licence.
+withdrawn
+rejected
+declined

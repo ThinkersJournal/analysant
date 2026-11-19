@@ -1,0 +1,7 @@
+# analysant-lexicon v1 | pack: en | separators of an "X, not Y" contrast in a heading: X is asserted, Y is denied (quoted: the spaces are part of the entry)
+# Provenance: the reference spike's split_contrast (contradiction.rs:737).
+", not "
+"; not "
+" — not "
+" - not "
+"— not "
