@@ -1,0 +1,3 @@
+// the control for the deny-list check: a project name and a word-list literal in engine source
+const PROJECT: &str = "Fuel";
+fn stop(w: &str) -> bool { matches!(w, "the" | "a" | "an") }

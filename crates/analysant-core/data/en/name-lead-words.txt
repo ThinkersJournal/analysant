@@ -1,0 +1,12 @@
+# analysant-lexicon v1 | pack: en | name: name-lead-words
+# A lowercase conjunction or preposition opening an emphasised span marks emphasis, not a name.
+and
+or
+but
+with
+for
+after
+at
+by
+of
+to

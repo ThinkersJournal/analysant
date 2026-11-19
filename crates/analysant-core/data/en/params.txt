@@ -1,0 +1,11 @@
+# analysant-params v1 | pack: en
+# name = integer. Thresholds of the extraction rules; the rules themselves are in code, the numbers are data.
+item_min_chars = 3
+cell_min_chars = 3
+name_min_chars = 3
+name_max_chars = 80
+name_max_words = 8
+shouting_percent = 80
+ident_max_chars = 80
+head_max_content_words = 8
+head_bold_min_words = 2

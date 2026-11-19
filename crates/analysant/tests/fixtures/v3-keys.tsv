@@ -1,0 +1,558 @@
+02-layers.md	3	status
+02-layers.md	3	zero production models implement it
+02-layers.md	3	forward is deliberately not on the trait
+02-layers.md	3	two tier runtime extensibility
+02-layers.md	3	fuel memory
+02-layers.md	3	fuel dispatch
+02-layers.md	3	cpu backend
+02-layers.md	3	localmodel
+02-layers.md	3	fuel model core tests registry rs
+02-layers.md	3	fixturemodel
+02-layers.md	3	umbrellamodel
+02-layers.md	3	automodel from path
+02-layers.md	3	planstore
+02-layers.md	3	fuel core src planner rs
+02-layers.md	3	compile plan
+02-layers.md	3	fuel dispatch src optimize rs
+02-layers.md	3	rs
+02-layers.md	3	backendimpl
+02-layers.md	3	fusedkernelregistry
+02-layers.md	3	storage
+02-layers.md	3	backendstorage
+02-layers.md	3	pipelinedexecutor
+02-layers.md	3	map from file
+02-layers.md	3	fuel
+02-layers.md	59	11 persistence md 189
+02-layers.md	63	lazy nn
+02-layers.md	63	fuel core lazy nn varbuilder varbuilder
+02-layers.md	63	fuel core lazy nn varmap varmap
+02-layers.md	63	lazy nn loss
+02-layers.md	63	lazy nn optim
+02-layers.md	63	lazy nn dropout
+02-layers.md	63	lazy nn gru
+02-layers.md	63	lazy nn prelu
+02-layers.md	63	lazy nn one hot
+02-layers.md	63	lazy nn conv transpose
+02-layers.md	63	fuel inference src lib rs
+02-layers.md	67	rule 1 dependencies flow downward only
+02-layers.md	81	lib rs
+02-layers.md	89	fuel ir tests crate dependency tiers txt
+02-layers.md	91	runtime extensible
+02-layers.md	91	binding table catalog
+02-layers.md	91	fused op metadata registry
+02-layers.md	91	extend global bindings
+02-layers.md	91	op
+02-layers.md	93	bit stable on same hardware
+02-layers.md	97	dtype
+02-layers.md	97	shape
+02-layers.md	97	backendcapabilities
+02-layers.md	113	40 and 0
+02-layers.md	119	fuel is the consumer entry point
+02-layers.md	123	fuel core dissolution gap 348 2026 10 14
+02-layers.md	123	today
+02-layers.md	123	fuel transformers models
+02-layers.md	123	macro export
+02-layers.md	124	after stage 2
+02-layers.md	124	after stage 2
+02-layers.md	124	above models
+02-layers.md	135	fuel core types dtypes shapes layouts errors dispatch
+02-layers.md	135	fuel core types
+02-layers.md	136	fuel graph op enum primitive variants op fused
+02-layers.md	136	fuel graph
+02-layers.md	136	optimizationmap
+02-layers.md	136	decompositionmap
+02-layers.md	136	not
+02-layers.md	136	tier 2 runtime updatable
+02-layers.md	136	op fused
+02-layers.md	136	node
+02-layers.md	136	graph
+02-layers.md	136	fusedopregistry
+02-layers.md	136	ruleregistry
+02-layers.md	136	fusedopid
+02-layers.md	136	patternkind declarative
+02-layers.md	136	fuel graph src opt rs
+02-layers.md	137	fuel memory renamed fuel storage memory storage substrate
+02-layers.md	138	fuel dispatch binding table catalog kernelref abi opparams
+02-layers.md	138	kernelref
+02-layers.md	138	opparams
+02-layers.md	139	fuel tensor fuel autograd post fission per phase
+02-layers.md	139	fuel tensor
+02-layers.md	139	fuel autograd
+02-layers.md	140	fuel conv fuel quantized ops warrant their own
+02-layers.md	140	fuel conv
+02-layers.md	140	fuel quantized
+02-layers.md	144	https
+02-layers.md	146	retirement trajectory landed status corrected 2026 10 14
+02-layers.md	148	as built status 2026 07 29
+02-layers.md	148	that is no longer true and was misleading
+02-layers.md	148	fuel core types no longer exists
+02-layers.md	148	fuel ir
+02-layers.md	148	fuel hardware
+02-layers.md	148	fuel backend contract
+02-layers.md	148	fuel core itself still exists
+02-layers.md	148	historical
+02-layers.md	148	systemtopology
+02-layers.md	154	format tier ir free byte parsing
+02-layers.md	154	read
+02-layers.md	154	seek
+02-layers.md	156	interchange tier translate the ir
+02-layers.md	158	quantization recipe
+02-layers.md	158	quantization recipe
+02-layers.md	159	fuel interchange graph operator dag base map 03
+02-layers.md	161	per format node weight binding
+02-layers.md	161	pt2
+02-layers.md	167	fuel model core model trait model type general
+02-layers.md	167	registry
+02-layers.md	167	fuel inference multi session decodemodel is capable and narrow
+02-layers.md	167	forward with kv context persistent
+02-layers.md	167	config from path
+02-layers.md	167	weightsource
+02-layers.md	167	link time distributed
+02-layers.md	167	model
+02-layers.md	167	model type
+02-layers.md	167	general architecture
+02-layers.md	167	fuel model core tests registry rs 43
+02-layers.md	167	fuel model fixture src lib rs 26
+02-layers.md	167	fuel model umbrella fixture src lib rs 29
+02-layers.md	167	fuel model core model
+02-layers.md	167	fuel inference multi session decodemodel
+02-layers.md	167	n layers
+02-layers.md	167	layer state specs
+02-layers.md	167	supports batched decode
+02-layers.md	167	build batched decode logits
+02-layers.md	167	qwen2config
+02-layers.md	167	deserialize
+02-layers.md	167	build modelspec
+02-layers.md	167	qwen2 7b
+02-layers.md	171	directly with no reference to it
+02-layers.md	171	directly
+02-layers.md	172	through fuel transformers whose pub use re exports it
+02-layers.md	172	through fuel transformers
+02-layers.md	173	not at all nothing referenced the discriminating control
+02-layers.md	175	13 interchange 13 interchange md carries the same claim in stronger form
+02-layers.md	175	recognizer over an empty registry recognises nothing
+02-layers.md	175	automodel
+02-layers.md	175	from path
+02-layers.md	175	identify arch
+02-layers.md	175	detect arch
+02-layers.md	175	infer arch
+02-layers.md	175	arch from graph
+02-layers.md	175	fuel core src quantized arch rs 94
+02-layers.md	176	fuel model one architecture per crate generic building
+02-layers.md	177	fuel transformers optional umbrella re exporting fuel model
+02-layers.md	179	applying the stopping rule below to this tier
+02-layers.md	179	now
+02-layers.md	179	extracted lazily
+02-layers.md	185	backend crate
+02-layers.md	185	backend crate
+02-layers.md	186	backend side wrapper module in fuel dispatch
+02-layers.md	186	backend side wrapper module in fuel dispatch
+02-layers.md	186	fuel dispatch dispatch cuda
+02-layers.md	186	backendstorage cuda
+02-layers.md	186	fuel storage dispatch
+02-layers.md	187	hardware ffi wrappers
+02-layers.md	187	hardware ffi wrappers
+02-layers.md	195	persisted fuel graph and tolerance recipe artifacts 11 persistence 11 persistence md
+02-layers.md	196	empirical judge profile data
+02-layers.md	196	empirical judge profile data
+02-layers.md	197	pattern harvest telemetry 08 pattern harvest 08 pattern harvest md
+02-layers.md	197	pattern harvest telemetry 08 pattern harvest 08 pattern harvest md
+02-layers.md	205	consumer needs included surface not excluded surface
+02-layers.md	206	fission unlocks compile time leanness ipc scenarios independent
+02-layers.md	207	split dependency graph not just file layout
+02-layers.md	215	03 ir 03 ir md ir types live
+02-layers.md	216	05 backend contract 05 backend contract md what
+02-layers.md	217	11 persistence 11 persistence md cross cutting artifact
+02-layers.md	218	13 interchange 13 interchange md import export model
+02-layers.md	219	roadmap layer model original layer model diagram dependency
+02-layers.md	220	roadmap phase 7 5 core simplification work item
+03-ir.md	3	status
+03-ir.md	3	slice 1
+03-ir.md	3	relative
+03-ir.md	3	matmul role vector op attrs serialize resolve live in both directions
+03-ir.md	3	shape expression oracle
+03-ir.md	3	increment a
+03-ir.md	3	single source of truth
+03-ir.md	3	length prefixed positional blob
+03-ir.md	3	data
+03-ir.md	3	increment c
+03-ir.md	3	built
+03-ir.md	3	predicate over the carry
+03-ir.md	3	trailing input
+03-ir.md	3	realize barrier step driver
+03-ir.md	3	no op scan native kernel
+03-ir.md	3	v0 6 was a major core claim change
+03-ir.md	3	first sub graph carrying primitive
+03-ir.md	3	not
+03-ir.md	3	terminal
+03-ir.md	3	no native kernel
+03-ir.md	3	v0 5 was a major core claim change
+03-ir.md	3	v0 4 was a major core claim change
+03-ir.md	3	multi path graph
+03-ir.md	3	decision points at branches
+03-ir.md	3	input independent model
+03-ir.md	3	opattrs
+03-ir.md	3	resolve rel attrs
+03-ir.md	3	optag maxdim
+03-ir.md	3	decompose via recipe
+03-ir.md	3	patternnode
+03-ir.md	3	softmax last dim
+03-ir.md	3	rms norm last dim
+03-ir.md	3	layer norm last dim
+03-ir.md	3	softmax last dim backward
+03-ir.md	3	op attrs
+03-ir.md	3	fusedopentry decompose
+03-ir.md	3	reduced count
+03-ir.md	3	shapeexpr
+03-ir.md	3	dimexpr
+03-ir.md	3	fuel dispatch src fkc shape expr rs
+03-ir.md	3	eval shape rule
+03-ir.md	3	shape consistent
+03-ir.md	3	output views
+03-ir.md	3	primitive shape
+03-ir.md	3	fuel graph src shape rs
+03-ir.md	3	tensor
+03-ir.md	3	tag to op
+03-ir.md	3	validate representable
+03-ir.md	3	op matmul
+03-ir.md	3	opattrs to canonical bytes
+03-ir.md	3	op scan
+03-ir.md	3	early exit
+03-ir.md	3	node inputs
+03-ir.md	3	drive scan until final f32
+03-ir.md	3	fuel core src hopfield rs
+03-ir.md	3	last state
+03-ir.md	3	tensor scan until
+03-ir.md	3	result
+03-ir.md	3	op scanplaceholder
+03-ir.md	3	custom
+03-ir.md	3	op branch
+03-ir.md	3	loweringrule
+03-ir.md	3	selective scan
+03-ir.md	3	ssd chunk scan
+03-ir.md	3	unroll scan
+03-ir.md	3	fuel graph src scan rs
+03-ir.md	3	op
+03-ir.md	3	nodekind
+03-ir.md	13	nodeid
+03-ir.md	17	graph is the model independent of any input
+03-ir.md	18	immutable nodes after creation
+03-ir.md	18	immutable nodes after creation
+03-ir.md	18	capacity upper bound shape
+03-ir.md	19	append only arena with compaction
+03-ir.md	19	before finalize to disk
+03-ir.md	19	between optimization rounds
+03-ir.md	19	optimize graph
+03-ir.md	19	fuel
+03-ir.md	20	side table metadata
+03-ir.md	20	side table metadata
+03-ir.md	22	arc rwlock
+03-ir.md	28	op enum is closed and build time closed
+03-ir.md	28	build time closed rust enum
+03-ir.md	28	no generic opaque custom node
+03-ir.md	28	cannot become a new primitive at runtime
+03-ir.md	28	build time
+03-ir.md	30	recipe in two inverse directions both mandatory
+03-ir.md	30	opaque island
+03-ir.md	30	fusedopregistry
+03-ir.md	32	populated at startup
+03-ir.md	32	stays
+03-ir.md	32	untrusted user installable ops rules
+03-ir.md	32	tier 1 the kernel binding table
+03-ir.md	32	tier 2 new goal
+03-ir.md	32	new fused op identity
+03-ir.md	32	declarative form
+03-ir.md	32	extend global bindings
+03-ir.md	32	fusedopid
+03-ir.md	64	primitive variants
+03-ir.md	64	primitive variants
+03-ir.md	65	op fused id params
+03-ir.md	71	lax scan
+03-ir.md	71	scan
+03-ir.md	71	o seqlen
+03-ir.md	71	cumsum
+03-ir.md	73	encoding recurrence body carried node s own inputs
+03-ir.md	73	encoding
+03-ir.md	73	last two
+03-ir.md	73	base map hash
+03-ir.md	73	op key
+03-ir.md	73	n xs
+03-ir.md	73	early exit is some
+03-ir.md	74	single carry tensor v1
+03-ir.md	75	always a 2 slot bundle
+03-ir.md	75	always a 2 slot bundle
+03-ir.md	75	body y
+03-ir.md	75	tensor scan
+03-ir.md	76	early exit is now a built mechanism phase 2
+03-ir.md	76	early exit is now a built mechanism phase 2
+03-ir.md	76	unit marker
+03-ir.md	76	graph build time
+03-ir.md	76	ignores
+03-ir.md	76	scanpredicate
+03-ir.md	76	some
+03-ir.md	76	pred exit
+03-ir.md	76	op scanplaceholder carry 0
+03-ir.md	76	body new carry
+03-ir.md	76	topo order multi
+03-ir.md	77	base map terminal not an executor facing op
+03-ir.md	78	payoff is basis closure not new runtime capability
+03-ir.md	79	what phase 2 built and what s still deferred
+03-ir.md	79	hopfield retrieve
+03-ir.md	83	storage class
+03-ir.md	85	shared weights constants op const one storage whole
+03-ir.md	85	shared
+03-ir.md	85	op const
+03-ir.md	86	session state
+03-ir.md	86	session state
+03-ir.md	86	per session
+03-ir.md	86	sessionid
+03-ir.md	87	transient activations everything else ephemeral scratch allocated per
+03-ir.md	87	transient
+03-ir.md	87	does
+03-ir.md	87	op copy
+03-ir.md	89	mmap backed zero copy view
+03-ir.md	93	layout
+03-ir.md	95	op transpose
+03-ir.md	95	op permute
+03-ir.md	95	op broadcastto
+03-ir.md	95	op reshape
+03-ir.md	95	op slice
+03-ir.md	95	op unsqueeze
+03-ir.md	97	optimizer
+03-ir.md	97	op contiguize
+03-ir.md	97	kernelcaps
+03-ir.md	101	nonzeroindices
+03-ir.md	103	default capacity shape valid count
+03-ir.md	103	default capacity shape valid count
+03-ir.md	103	upper bound
+03-ir.md	103	cached len
+03-ir.md	104	fallback symbolic dim realize time specialization
+03-ir.md	104	fallback symbolic dim realize time specialization
+03-ir.md	106	docs session prompts data dependent shapes design md
+03-ir.md	118	budgets are propagated not embedded
+03-ir.md	119	per call overrides don t mutate the ir
+03-ir.md	119	per call overrides don t mutate the ir
+03-ir.md	125	base map
+03-ir.md	127	primitive decomposes to itself
+03-ir.md	127	surfaced opaque op gap
+03-ir.md	127	fuel graph src registry rs 823
+03-ir.md	129	retained as a permanent artifact
+03-ir.md	129	hardware independent and portable
+03-ir.md	131	re optimization from canonical state
+03-ir.md	131	re optimization from canonical state
+03-ir.md	132	pattern harvesting against canonical form
+03-ir.md	132	pattern harvesting against canonical form
+03-ir.md	133	bisection during debugging
+03-ir.md	133	bisection during debugging
+03-ir.md	139	in place
+03-ir.md	139	optimized multi path graph
+03-ir.md	139	optimized graph is the plan
+03-ir.md	139	multiple alternative routes that diverge and reconverge
+03-ir.md	143	alternatives are paths not a per node side table
+03-ir.md	143	decision points
+03-ir.md	143	run
+03-ir.md	143	few
+03-ir.md	147	surviving paths are a bounded pareto frontier per ending device
+03-ir.md	147	crowding distance cap keep per device
+03-ir.md	147	per ending device
+03-ir.md	147	forward identical
+03-ir.md	149	optional
+03-ir.md	149	kernelref
+03-ir.md	162	user facing form
+03-ir.md	162	user facing form
+03-ir.md	163	base map
+03-ir.md	164	optimized multi path graph
+03-ir.md	170	one
+03-ir.md	172	local reload is fast via scoped re optimization
+03-ir.md	172	local reload is fast via scoped re optimization
+03-ir.md	172	only localized re optimization
+03-ir.md	172	map from file
+03-ir.md	173	it works anywhere even unstripped
+03-ir.md	174	stripper tool removes everything but the base map
+03-ir.md	182	op enum primitives
+03-ir.md	183	fused op registry fn pointer entries
+03-ir.md	184	fused op identities declarative tier 2
+03-ir.md	185	kernel binding table tier 1
+03-ir.md	186	graph model input independent
+03-ir.md	186	arc rwlock graph
+03-ir.md	187	base map portable l1
+03-ir.md	188	optimized multi path graph the plan
+03-ir.md	189	node storage class
+03-ir.md	190	shared storage weights
+03-ir.md	191	session storage kv etc
+03-ir.md	192	transient storage activations
+03-ir.md	193	layout side table
+03-ir.md	193	graph layouts
+03-ir.md	194	tolerance metadata
+03-ir.md	195	per path kernelref
+03-ir.md	203	01 identity 01 identity md why dag ir
+03-ir.md	204	04 optimization 04 optimization md optimize graph pathfinders
+03-ir.md	205	06 runtime 06 runtime md sequence dispatch runtime
+03-ir.md	206	05 backend contract 05 backend contract md how
+03-ir.md	207	11 persistence 11 persistence md base map portable
+03-ir.md	208	14 lifecycle 14 lifecycle md end end flow
+03-ir.md	209	10 decisions log 2026 06 14 10 decisions
+03-ir.md	210	10 decisions log 2026 06 20 10 decisions
+03-ir.md	211	10 decisions log 2026 07 15 10 decisions
+06-runtime.md	3	status
+06-runtime.md	3	synchronous
+06-runtime.md	3	no load telemetry
+06-runtime.md	3	v1 5 also reconciles to the 2026 06 20 adaptive runtime fusion decision
+06-runtime.md	3	fuel orchestrated jit registration
+06-runtime.md	3	idle time whole machine resource aware jit fusion
+06-runtime.md	3	live queue depth
+06-runtime.md	3	v1 3 refines landed vs intent and salvages two durable facts
+06-runtime.md	3	multi path graph
+06-runtime.md	3	runtime selector picker 2
+06-runtime.md	3	few decision points branch points
+06-runtime.md	3	per tier free memory
+06-runtime.md	3	run
+06-runtime.md	3	work item producer
+06-runtime.md	3	cross tier prefetch schedule
+06-runtime.md	3	bundled in package
+06-runtime.md	3	fuel dispatch
+06-runtime.md	3	planstore
+06-runtime.md	3	rs
+06-runtime.md	3	pipelinedexecutor
+06-runtime.md	3	kernelref
+06-runtime.md	3	pipelined bridge
+06-runtime.md	3	deviceloadselector
+06-runtime.md	3	step e async execution md
+06-runtime.md	3	pipelinedexecutor realize with optimized picking env
+06-runtime.md	3	pick route
+06-runtime.md	3	pipelined bridge rs
+06-runtime.md	3	resolve runtime route
+06-runtime.md	3	is causal
+06-runtime.md	15	path resolution at decision points
+06-runtime.md	15	path resolution at decision points
+06-runtime.md	16	run dispatch
+06-runtime.md	16	run dispatch
+06-runtime.md	17	data parallel execution
+06-runtime.md	17	data parallel execution
+06-runtime.md	18	synchronization at join points
+06-runtime.md	18	synchronization at join points
+06-runtime.md	22	strategic decisions
+06-runtime.md	22	strategic decisions
+06-runtime.md	23	kernel implementation
+06-runtime.md	23	kernel implementation
+06-runtime.md	24	cache management
+06-runtime.md	24	cache management
+06-runtime.md	28	picker 2
+06-runtime.md	28	decision point
+06-runtime.md	43	few
+06-runtime.md	45	landed today
+06-runtime.md	45	live per tier free memory
+06-runtime.md	45	pick now runs inside the executor
+06-runtime.md	45	architecture s intent but not yet built
+06-runtime.md	45	per decision point during the dispatch walk
+06-runtime.md	47	step e phase a c landed 2026 06 30
+06-runtime.md	47	automatic cross device overlap reorder
+06-runtime.md	47	hint
+06-runtime.md	47	remaining gap
+06-runtime.md	47	backendstreams
+06-runtime.md	47	walk picked route streaming
+06-runtime.md	47	op branch
+06-runtime.md	47	load tier
+06-runtime.md	47	chainedselector
+06-runtime.md	47	fuel graph device alternating order
+06-runtime.md	55	topological order
+06-runtime.md	59	runs
+06-runtime.md	59	unit
+06-runtime.md	63	megakernel
+06-runtime.md	63	turns over
+06-runtime.md	63	not monotonic
+06-runtime.md	65	lookahead window
+06-runtime.md	67	shallow just in time
+06-runtime.md	67	shallow just in time
+06-runtime.md	68	deep queue many runs ahead backends always busy
+06-runtime.md	68	deep
+06-runtime.md	69	bounded default
+06-runtime.md	69	bounded default
+06-runtime.md	73	dispatched runs are committed
+06-runtime.md	79	ready set tracks all runs whose inputs available
+06-runtime.md	80	each ready run dispatched available slot assigned backend
+06-runtime.md	81	across backends multiple runs simultaneously flight within one
+06-runtime.md	87	op copy
+06-runtime.md	91	per tier
+06-runtime.md	99	first class
+06-runtime.md	99	orchestrate eager collectives above
+06-runtime.md	99	op
+06-runtime.md	109	disk host ram
+06-runtime.md	109	disk host ram
+06-runtime.md	109	madvise willneed
+06-runtime.md	110	host ram device vram
+06-runtime.md	110	host ram device vram
+06-runtime.md	110	backendruntime
+06-runtime.md	116	per decision point with merged path sets
+06-runtime.md	116	optimize graph
+06-runtime.md	118	loaded multi path graph working state
+06-runtime.md	119	optimizer walks decision points topological order
+06-runtime.md	120	keep the per device pareto frontier crowding capped
+06-runtime.md	120	keep the per device pareto frontier crowding capped
+06-runtime.md	122	merge
+06-runtime.md	122	incremental
+06-runtime.md	124	trigger policy
+06-runtime.md	126	strategist
+06-runtime.md	126	partial
+06-runtime.md	126	adopt reject
+06-runtime.md	126	synthesizer
+06-runtime.md	126	no backend side opportunity finding
+06-runtime.md	126	new
+06-runtime.md	126	existing
+06-runtime.md	126	precisionguarantee
+06-runtime.md	128	per decision point atomic swap
+06-runtime.md	128	arc
+06-runtime.md	132	affected scope
+06-runtime.md	132	load time validation
+06-runtime.md	136	device removed
+06-runtime.md	137	backend kernel revision hash changed
+06-runtime.md	138	profile data refined for cells op dtype size class backend device
+06-runtime.md	139	tolerance configuration changed
+06-runtime.md	140	new device added
+06-runtime.md	141	loading a fuel on changed hardware
+06-runtime.md	141	fuel
+06-runtime.md	143	mechanism
+06-runtime.md	147	ships a bundled baseline judge dataset in package
+06-runtime.md	149	no network
+06-runtime.md	159	cached resolved route
+06-runtime.md	159	cached resolved route
+06-runtime.md	160	persisted graph optimization cache
+06-runtime.md	160	persisted graph optimization cache
+06-runtime.md	160	memory mapped at startup
+06-runtime.md	164	lazily
+06-runtime.md	168	write new file and swap
+06-runtime.md	176	no runtime kernel selection across paths the optimizer didn t keep
+06-runtime.md	177	no silent runtime fallback to a different op
+06-runtime.md	177	no silent runtime fallback to a different op
+06-runtime.md	177	what this does not rule out
+06-runtime.md	177	fuel orchestrated runtime kernel registration
+06-runtime.md	177	binding table is already runtime extensible
+06-runtime.md	177	existing op identity
+06-runtime.md	177	new fused op identity
+06-runtime.md	177	silent op substitution mid realize
+06-runtime.md	177	extend global bindings
+06-runtime.md	178	no graph rebuild per input or per token
+06-runtime.md	178	no graph rebuild per input or per token
+06-runtime.md	178	reuses
+06-runtime.md	180	no dedicated mask op
+06-runtime.md	180	re bound each pass
+06-runtime.md	181	within realize observations don t change the current realize
+06-runtime.md	181	within realize observations don t change the current realize
+06-runtime.md	181	background re optimization
+06-runtime.md	185	fuel dispatch pipelinedexecutor single executor every realize entry
+06-runtime.md	185	compile plan
+06-runtime.md	185	fuel core src planner rs
+06-runtime.md	185	fuel dispatch src optimize rs
+06-runtime.md	186	per backend crates
+06-runtime.md	186	per backend crates
+06-runtime.md	187	fuel core pipelined bridge realize entry prep judge
+06-runtime.md	187	fuel core
+06-runtime.md	195	03 ir 03 ir md multi path graph
+06-runtime.md	196	04 optimization 04 optimization md produces multi path
+06-runtime.md	197	05 backend contract 05 backend contract md slot
+06-runtime.md	198	07 tolerance 07 tolerance md per call tolerance
+06-runtime.md	199	08 pattern harvest 08 pattern harvest md missing
+06-runtime.md	200	11 persistence 11 persistence md persisting loading unified
+06-runtime.md	201	14 lifecycle 14 lifecycle md realize work item
+06-runtime.md	202	10 decisions log 2026 06 14 10 decisions
+06-runtime.md	203	10 decisions log 2026 06 20 10 decisions
