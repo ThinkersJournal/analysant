@@ -52,6 +52,10 @@ dependencies = [
 [[package]]
 name = "analysant-semantic"
 version = "0.1.0"
+dependencies = [
+ "analysant-core",
+ "analysant-lexical",
+]
 
 [[package]]
 name = "analysant-structural"

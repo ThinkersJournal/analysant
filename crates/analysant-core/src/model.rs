@@ -244,3 +244,16 @@ pub struct Relation {
     pub by: Derivation,
     pub state: RelationState,
 }
+
+/// Why a decision could not be made.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Reason(pub String);
+
+/// The three-valued result of every decision in the base libraries (SPEC-STEP1 3.3): yes with its
+/// evidence, no with its evidence, or undecided with the reason. "Undecided" is never "no".
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Decision<T> {
+    Yes(T, Evidence),
+    No(Evidence),
+    Undecided(Reason),
+}
