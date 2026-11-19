@@ -3,7 +3,8 @@
 //! (`spike-report-2026-11-16.md:463-471`) against the reference project's code at the pinned commit.
 //!
 //! The tree is not in this repository. Point `ANALYSANT_REFERENCE_CODE` at an extract of it
-//! (`git archive b0d74efa | tar -x -C <dir>`); without it the test says so and returns, and the
+//! (`git archive b0d74efa | tar -x -C <dir>`); without it the test says so and returns locally (CI sets `ANALYSANT_REQUIRE_REFERENCE=1`, where
+//! an unset variable or a missing tree fails instead; a plain checkout works too), and the
 //! synthetic rows in `tests/shapes.rs` still run. The expectations below are the audit's rows, each one
 //! stated as what the engine must say: four rows agree with the audit, and the three where the spike
 //! disagreed must report the disagreement explicitly (reach, not a bare "built").
@@ -31,11 +32,22 @@ fn load() -> Option<&'static CodeIndex> {
 }
 
 fn load_once() -> Option<CodeIndex> {
+    // CI sets ANALYSANT_REQUIRE_REFERENCE=1: there an unset variable or a missing tree fails, never skips.
+    let required = std::env::var_os("ANALYSANT_REQUIRE_REFERENCE").is_some();
     let Some(root) = std::env::var_os("ANALYSANT_REFERENCE_CODE") else {
+        assert!(
+            !required,
+            "ANALYSANT_REQUIRE_REFERENCE is set but ANALYSANT_REFERENCE_CODE is not"
+        );
         eprintln!("SKIPPED gate_rows: ANALYSANT_REFERENCE_CODE is not set");
         return None;
     };
     let root = PathBuf::from(root);
+    assert!(
+        !required || root.is_dir(),
+        "the reference tree is missing at {}",
+        root.display()
+    );
     let mut files = Vec::new();
     rs_files(&root, &mut files);
     let mut index = CodeIndex::new(RustPack::new());
