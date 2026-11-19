@@ -1,9 +1,14 @@
 [package]
 name = "analysant-core"
-description = "AnalysAnt: analysant-core (placeholder; no API yet)"
+description = "AnalysAnt core: claim model, language-pack and format-adapter seams, findings with search records and controls, in-memory ledger, English pack"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+
+[features]
+default = ["markdown"]
+# The Markdown FormatAdapter (D4): in core so that slice 1 needs no unbuilt structural crate.
+markdown = []

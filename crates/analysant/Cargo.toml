@@ -1,9 +1,13 @@
 [package]
 name = "analysant"
-description = "AnalysAnt: analysant (placeholder; no API yet)"
+description = "AnalysAnt: document analysis for plans, specs and code; slice 1 reads claims out of documents and checks them against a plan"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+
+[dependencies]
+analysant-core = { path = "../analysant-core", version = "0.1.0" }
+analysant-lexical = { path = "../analysant-lexical", version = "0.1.0" }

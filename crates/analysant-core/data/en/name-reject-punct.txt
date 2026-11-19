@@ -1,0 +1,5 @@
+# analysant-lexicon v1 | pack: en | name: name-reject-punct
+# Sentence punctuation inside an emphasised span marks a sentence, not a name. Quoted entries keep their space.
+", "
+"; "
+". "

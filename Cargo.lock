@@ -4,48 +4,55 @@ version = 4
 
 [[package]]
 name = "analysant"
-version = "0.0.1"
+version = "0.1.0"
+dependencies = [
+ "analysant-core",
+ "analysant-lexical",
+]
 
 [[package]]
 name = "analysant-core"
-version = "0.0.1"
+version = "0.1.0"
 
 [[package]]
 name = "analysant-deontic"
-version = "0.0.1"
+version = "0.1.0"
 
 [[package]]
 name = "analysant-discourse"
-version = "0.0.1"
+version = "0.1.0"
 
 [[package]]
 name = "analysant-epistemic"
-version = "0.0.1"
+version = "0.1.0"
 
 [[package]]
 name = "analysant-lexical"
-version = "0.0.1"
+version = "0.1.0"
+dependencies = [
+ "analysant-core",
+]
 
 [[package]]
 name = "analysant-logical"
-version = "0.0.1"
+version = "0.1.0"
 
 [[package]]
 name = "analysant-ontological"
-version = "0.0.1"
+version = "0.1.0"
 
 [[package]]
 name = "analysant-pragmatic"
-version = "0.0.1"
+version = "0.1.0"
 
 [[package]]
 name = "analysant-semantic"
-version = "0.0.1"
+version = "0.1.0"
 
 [[package]]
 name = "analysant-structural"
-version = "0.0.1"
+version = "0.1.0"
 
 [[package]]
 name = "analysant-temporal"
-version = "0.0.1"
+version = "0.1.0"

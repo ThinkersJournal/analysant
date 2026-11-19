@@ -1,0 +1,8 @@
+# analysant-lexicon v1 | pack: en | name: abbreviations
+# A full stop after one of these (lowercase, without the stop) does not end a sentence.
+e.g
+i.e
+etc
+vs
+cf
+approx

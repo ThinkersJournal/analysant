@@ -1,0 +1,5 @@
+# analysant-lexicon v1 | pack: en | name: leading-articles
+# An article at the start of a phrase is not part of its key.
+the
+a
+an

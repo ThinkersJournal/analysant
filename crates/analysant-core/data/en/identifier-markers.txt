@@ -1,0 +1,5 @@
+# analysant-lexicon v1 | pack: en | name: identifier-markers
+# A code span containing one of these reads as a code identifier rather than prose (mixed case is the other test, in code).
+::
+_
+.
