@@ -26,10 +26,9 @@
 //! test not-same: budget tolerance | budget memory
 //! ```
 
-use analysant_core::{
-    Decision, Evidence, LanguagePack, NormalForm, Reason, Span, TableError, Token, normalize,
-};
+use analysant_core::{LanguagePack, NormalForm, Span, TableError, Token, normalize};
 use analysant_lexical::{AliasTable, Canonical};
+use semanticant_core::{Reason, Verdict};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ConceptId(pub String);
@@ -257,51 +256,74 @@ impl<'a> ConceptStore<'a> {
         AliasTable::parse(self.pack, &lines).canonicalize(self.pack, text)
     }
 
-    /// How two terms relate, from the tables alone. `Same` when they name the same concept in the same
-    /// sense (or are the same words); `Unrelated` when they are two senses of one overloaded word;
-    /// `Undecided`, with the reason, whenever the tables do not say.
-    pub fn relate(&self, a: &NormalForm, b: &NormalForm, ctx: &Context) -> Decision<TermRelation> {
-        let (ra, rb) = (self.resolve(a, ctx), self.resolve(b, ctx));
+    /// How two terms relate, from the tables alone, both read in one context. See [`Self::relate_in`].
+    pub fn relate(
+        &self,
+        a: &NormalForm,
+        b: &NormalForm,
+        ctx: &Context,
+    ) -> Verdict<Option<TermRelation>> {
+        self.relate_in(a, ctx, b, ctx)
+    }
+
+    /// How two terms relate, each read in its own context. The value is `Some(relation)` when the
+    /// tables decide: `Same` for the same concept in the same sense (or the same words in no table),
+    /// `Unrelated` for two senses of one overloaded word. It is `None`, with the reason, when the tables
+    /// do not say: undecided is never "unrelated". The reasons are the rule that fired.
+    pub fn relate_in(
+        &self,
+        a: &NormalForm,
+        ca: &Context,
+        b: &NormalForm,
+        cb: &Context,
+    ) -> Verdict<Option<TermRelation>> {
+        let (ra, rb) = (self.resolve(a, ca), self.resolve(b, cb));
         match (&ra, &rb) {
             (
                 Resolution::Concept {
-                    concept: ca,
-                    sense: sa,
+                    concept: x,
+                    sense: sx,
                     layer,
                 },
                 Resolution::Concept {
-                    concept: cb,
-                    sense: sb,
+                    concept: y,
+                    sense: sy,
                     ..
                 },
-            ) if ca == cb => {
-                if sa == sb {
-                    Decision::Yes(
-                        TermRelation::Same,
-                        Evidence(format!("both are concept {} (layer {layer})", ca.0)),
-                    )
+            ) if x == y => {
+                if sx == sy {
+                    Verdict::new(Some(TermRelation::Same)).because(Reason::new(
+                        "same-concept",
+                        format!("both are concept {} (layer {layer})", x.0),
+                    ))
                 } else {
-                    Decision::Yes(
-                        TermRelation::Unrelated,
-                        Evidence(format!(
+                    Verdict::new(Some(TermRelation::Unrelated)).because(Reason::new(
+                        "different-senses",
+                        format!(
                             "two senses of {}: {:?} and {:?}",
-                            ca.0,
-                            sa.as_ref().map(|s| &s.0),
-                            sb.as_ref().map(|s| &s.0)
-                        )),
-                    )
+                            x.0,
+                            sx.as_ref().map(|s| &s.0),
+                            sy.as_ref().map(|s| &s.0)
+                        ),
+                    ))
                 }
             }
-            (Resolution::Unknown, Resolution::Unknown) if a.key == b.key => Decision::Yes(
-                TermRelation::Same,
-                Evidence("the same words, in no table".into()),
-            ),
+            (Resolution::Unknown, Resolution::Unknown) if a.key == b.key => {
+                Verdict::new(Some(TermRelation::Same))
+                    .because(Reason::new("same-words", "the same words, in no table"))
+            }
             (Resolution::Ambiguous { concept, .. }, _)
-            | (_, Resolution::Ambiguous { concept, .. }) => Decision::Undecided(Reason(format!(
-                "{} is overloaded and the context does not pick a sense",
-                concept.0
-            ))),
-            _ => Decision::Undecided(Reason("the tables record no relation".into())),
+            | (_, Resolution::Ambiguous { concept, .. }) => {
+                Verdict::new(None).because(Reason::new(
+                    "ambiguous-sense",
+                    format!(
+                        "{} is overloaded and the context does not pick a sense",
+                        concept.0
+                    ),
+                ))
+            }
+            _ => Verdict::new(None)
+                .because(Reason::new("no-relation", "the tables record no relation")),
         }
     }
 
@@ -539,26 +561,24 @@ sense budget-resource | per-device resource limit | cues: vram, memory, device
         // Same word, different contexts: resolve each side in its own context, then compare.
         let (a, b) = (s.resolve(&t, &tol), s.resolve(&t, &mem));
         assert_ne!(a, b);
-        match s.relate(&t, &t, &tol) {
-            Decision::Yes(TermRelation::Same, _) => {}
-            other => panic!("{other:?}"),
-        }
-        assert!(matches!(
-            s.relate(&t, &nf(&en, "harvest"), &tol),
-            Decision::Undecided(_)
-        ));
-        assert!(matches!(
-            s.relate(&t, &t, &Context::default()),
-            Decision::Undecided(_)
-        ));
-        assert!(matches!(
-            s.relate(
-                &nf(&en, "foo bar"),
-                &nf(&en, "foo bar"),
-                &Context::default()
-            ),
-            Decision::Yes(TermRelation::Same, _)
-        ));
+        let v = s.relate(&t, &t, &tol);
+        assert_eq!(v.value, Some(TermRelation::Same));
+        assert_eq!(v.reasons[0].rule, "same-concept");
+        // Two senses of one word, each read in its own context: unrelated, and it says why.
+        let v = s.relate_in(&t, &tol, &t, &mem);
+        assert_eq!(v.value, Some(TermRelation::Unrelated));
+        assert_eq!(v.reasons[0].rule, "different-senses");
+        // Undecided is None with a reason, never Unrelated.
+        let v = s.relate(&t, &nf(&en, "harvest"), &tol);
+        assert_eq!((v.value, v.reasons[0].rule), (None, "no-relation"));
+        let v = s.relate(&t, &t, &Context::default());
+        assert_eq!((v.value, v.reasons[0].rule), (None, "ambiguous-sense"));
+        let foo = nf(&en, "foo bar");
+        let v = s.relate(&foo, &foo, &Context::default());
+        assert_eq!(
+            (v.value, v.reasons[0].rule),
+            (Some(TermRelation::Same), "same-words")
+        );
     }
 
     #[test]

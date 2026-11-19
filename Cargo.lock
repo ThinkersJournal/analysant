@@ -55,6 +55,7 @@ version = "0.1.0"
 dependencies = [
  "analysant-core",
  "analysant-lexical",
+ "semanticant-core",
 ]
 
 [[package]]
@@ -64,3 +65,9 @@ version = "0.1.0"
 [[package]]
 name = "analysant-temporal"
 version = "0.1.0"
+
+[[package]]
+name = "semanticant-core"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8832da794278643816036382b93c6b9865b59d49c7e2048cf0e7fd36c09acb3"
