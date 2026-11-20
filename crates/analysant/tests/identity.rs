@@ -320,7 +320,7 @@ fn the_file_round_trips_byte_for_byte_and_is_one_record_per_line() {
         ),
     );
     let text = render(&ev);
-    assert_eq!(text.lines().count(), 4, "3 minted + 1 revised");
+    assert_eq!(text.lines().count(), 5, "1 header + 3 minted + 1 revised");
     assert!(text.ends_with('\n'));
     let back = parse(&text).unwrap();
     assert_eq!(render(&back), text);
@@ -351,11 +351,11 @@ fn a_hand_edited_or_malformed_line_is_refused_with_its_line_number() {
     let broken = format!("{text}{{not json}}\n");
     assert!(matches!(
         parse(&broken),
-        Err(LedgerFileError::Malformed(4, _))
+        Err(LedgerFileError::Malformed(5, _))
     ));
     let extra = text.replacen("\"revision\":1", "\"revision\":1,\"colour\":\"red\"", 1);
     assert!(
-        matches!(parse(&extra), Err(LedgerFileError::Malformed(1, _))),
+        matches!(parse(&extra), Err(LedgerFileError::Malformed(2, _))),
         "unknown field"
     );
     // Control: the untouched text parses.

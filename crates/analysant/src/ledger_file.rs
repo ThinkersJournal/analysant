@@ -14,6 +14,12 @@
 //!
 //! **Order.** Events are kept in one canonical order, `(unit, revision, kind rank, event id)`, so a
 //! merge written from either side is byte-identical.
+//!
+//! **Format version.** The first record of a non-empty file is a header,
+//! `{"type":"format","name":"analysant-ledger","version":1}`. A reader requires it, refuses a file
+//! without one and a version it does not know (older or newer, naming both), and never counts it as
+//! an event: it has no id, takes no part in `state` or `history`, and a merge keeps exactly one.
+//! A file with no records at all (empty or blank) is an empty ledger.
 
 use analysant_core::finding::fnv1a;
 use analysant_core::{Revision, UnitId, UnitKind};
@@ -24,6 +30,33 @@ use std::path::Path;
 
 /// Where the file lives, relative to the project root (D7).
 pub const LEDGER_PATH: &str = ".analysant/ledger.jsonl";
+
+/// The format version this code writes and the only one it reads. A change to the record shapes or to
+/// how ids are computed raises it.
+pub const LEDGER_FORMAT_VERSION: u32 = 1;
+
+const FORMAT_RECORD: &str = "format";
+const FORMAT_NAME: &str = "analysant-ledger";
+
+/// The header record (first line of a non-empty file).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Header {
+    #[serde(rename = "type")]
+    record: String,
+    name: String,
+    version: u32,
+}
+
+impl Header {
+    fn current() -> Self {
+        Self {
+            record: FORMAT_RECORD.to_string(),
+            name: FORMAT_NAME.to_string(),
+            version: LEDGER_FORMAT_VERSION,
+        }
+    }
+}
 
 /// Which kind of unit an event is about. Re-identification (1.4) records claims only so far.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -212,6 +245,20 @@ pub enum LedgerFileError {
     },
     /// Two different events under one id (a hash collision or a forged line).
     IdCollision(String),
+    /// The first record of a non-empty file is not the format header (1-based line of that record).
+    MissingHeader {
+        line: usize,
+    },
+    /// The header names a version this code does not read.
+    UnsupportedVersion {
+        found: u32,
+        supported: u32,
+    },
+    /// Two files to merge declare different versions: refused, never merged.
+    VersionMismatch {
+        a: u32,
+        b: u32,
+    },
     Io(String),
 }
 
@@ -235,6 +282,18 @@ impl fmt::Display for LedgerFileError {
                 write!(f, "event {id}: unit {unit} was never minted in this ledger")
             }
             Self::IdCollision(id) => write!(f, "two different events carry id {id}"),
+            Self::MissingHeader { line } => write!(
+                f,
+                "ledger line {line}: the first record must be the format header"
+            ),
+            Self::UnsupportedVersion { found, supported } => write!(
+                f,
+                "ledger format version {found} is not supported (this code reads version {supported})"
+            ),
+            Self::VersionMismatch { a, b } => write!(
+                f,
+                "cannot merge ledgers of different format versions ({a} and {b})"
+            ),
             Self::Io(why) => f.write_str(why),
         }
     }
@@ -247,18 +306,81 @@ fn canonical(mut events: Vec<Event>) -> Vec<Event> {
     events
 }
 
-/// Read a ledger. Blank lines are skipped. A line that does not parse, whose id is not its content's
-/// hash, or whose unit is not an id is an error naming the line. A repeated event (same id, same
-/// content) is kept once. The result is in canonical order.
+/// What one non-blank line is.
+enum Record {
+    Header(Header),
+    Event(Event),
+}
+
+fn record_of(n: usize, line: &str) -> Result<Record, LedgerFileError> {
+    let malformed = |e: serde_json::Error| LedgerFileError::Malformed(n, e.to_string());
+    let value: serde_json::Value = serde_json::from_str(line).map_err(malformed)?;
+    if value.get("type").and_then(serde_json::Value::as_str) == Some(FORMAT_RECORD) {
+        let h: Header = serde_json::from_value(value).map_err(malformed)?;
+        if h.name != FORMAT_NAME {
+            return Err(LedgerFileError::Malformed(
+                n,
+                format!("not a ledger header: name {:?}", h.name),
+            ));
+        }
+        Ok(Record::Header(h))
+    } else {
+        serde_json::from_value(value)
+            .map(Record::Event)
+            .map_err(malformed)
+    }
+}
+
+fn check_version(found: u32) -> Result<(), LedgerFileError> {
+    if found == LEDGER_FORMAT_VERSION {
+        Ok(())
+    } else {
+        Err(LedgerFileError::UnsupportedVersion {
+            found,
+            supported: LEDGER_FORMAT_VERSION,
+        })
+    }
+}
+
+/// The version a file declares, `None` for a file with no records. The first record must be the
+/// header; the version itself is not checked here.
+fn declared_version(text: &str) -> Result<Option<u32>, LedgerFileError> {
+    for (i, line) in text.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        return match record_of(i + 1, line)? {
+            Record::Header(h) => Ok(Some(h.version)),
+            Record::Event(_) => Err(LedgerFileError::MissingHeader { line: i + 1 }),
+        };
+    }
+    Ok(None)
+}
+
+/// Read a ledger. Blank lines are skipped. A non-empty file must begin with the format header, whose
+/// version must be [`LEDGER_FORMAT_VERSION`] (a repeated identical header, as a textual merge leaves,
+/// is ignored). A line that does not parse, whose id is not its content's hash, or whose unit is not
+/// an id is an error naming the line. A repeated event (same id, same content) is kept once. The
+/// result is in canonical order and holds events only.
 pub fn parse(text: &str) -> Result<Vec<Event>, LedgerFileError> {
     let mut by_id: BTreeMap<String, Event> = BTreeMap::new();
+    let mut seen_header = false;
     for (i, line) in text.lines().enumerate() {
         let n = i + 1;
         if line.trim().is_empty() {
             continue;
         }
-        let ev: Event =
-            serde_json::from_str(line).map_err(|e| LedgerFileError::Malformed(n, e.to_string()))?;
+        let ev = match record_of(n, line)? {
+            Record::Header(h) => {
+                check_version(h.version)?;
+                seen_header = true;
+                continue;
+            }
+            Record::Event(ev) => ev,
+        };
+        if !seen_header {
+            return Err(LedgerFileError::MissingHeader { line: n });
+        }
         if ev.unit().is_none() {
             return Err(LedgerFileError::BadUnit {
                 line: n,
@@ -298,10 +420,11 @@ pub fn parse(text: &str) -> Result<Vec<Event>, LedgerFileError> {
     Ok(canonical(by_id.into_values().collect()))
 }
 
-/// The file's text: one JSON record per line, canonical order, a final newline. Same events, same
-/// bytes.
+/// The file's text: the format header, then one JSON record per event, canonical order, a final
+/// newline. Same events, same bytes.
 pub fn render(events: &[Event]) -> String {
-    let mut out = String::new();
+    let mut out = serde_json::to_string(&Header::current()).unwrap_or_default();
+    out.push('\n');
     for ev in canonical(events.to_vec()) {
         out.push_str(&serde_json::to_string(&ev).unwrap_or_default());
         out.push('\n');
@@ -342,6 +465,30 @@ pub fn merge(a: &[Event], b: &[Event]) -> Result<Merged, LedgerFileError> {
     let events = canonical(by_id.into_values().collect());
     let conflicts = conflicts_of(&events);
     Ok(Merged { events, conflicts })
+}
+
+/// A merge of two ledger files.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MergedText {
+    /// The merged file: one header, then the union of the events in canonical order.
+    pub text: String,
+    pub conflicts: Vec<Conflict>,
+}
+
+/// Merge two ledger files (D3). Files that declare different versions are refused, never merged;
+/// each file must otherwise be readable by [`parse`]. A file with no records contributes nothing.
+/// Same inputs in either order give byte-identical text.
+pub fn merge_text(a: &str, b: &str) -> Result<MergedText, LedgerFileError> {
+    if let (Some(va), Some(vb)) = (declared_version(a)?, declared_version(b)?) {
+        if va != vb {
+            return Err(LedgerFileError::VersionMismatch { a: va, b: vb });
+        }
+    }
+    let merged = merge(&parse(a)?, &parse(b)?)?;
+    Ok(MergedText {
+        text: render(&merged.events),
+        conflicts: merged.conflicts,
+    })
 }
 
 fn conflicts_of(events: &[Event]) -> Vec<Conflict> {
