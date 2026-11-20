@@ -423,11 +423,33 @@ pub fn produce(root: &Path, opts: &Options) -> Result<Production, ProduceError> 
         found.suppressed.len()
     ));
 
-    let code = match &opts.code {
+    // `--code` wins; otherwise the project file's `[code] dir`, read relative to the project root and
+    // refused, naming it, when it is not a directory or not a git work tree (never a silent skip).
+    let code_dir: Option<std::path::PathBuf> = match (&opts.code, &config.code_dir) {
+        (Some(flag), _) => Some(Path::new(flag).to_path_buf()),
+        (None, Some(rel)) => {
+            let dir = root.join(rel);
+            if !dir.is_dir() {
+                return fail(format!(
+                    "{PROJECT_FILE}: [code] dir `{rel}` is not a directory ({})",
+                    dir.display()
+                ));
+            }
+            Some(dir)
+        }
+        (None, None) => None,
+    };
+    let code = match &code_dir {
         None => None,
-        Some(dir) => {
-            let code_root = Path::new(dir);
-            let code_enum = enumerate(code_root)?;
+        Some(code_root) => {
+            let code_root: &Path = code_root;
+            let code_enum = enumerate(code_root).map_err(|e| {
+                if opts.code.is_none() {
+                    ProduceError(format!("{PROJECT_FILE}: [code] dir: {}", e.0))
+                } else {
+                    e
+                }
+            })?;
             let rust_files: Vec<&String> = code_enum
                 .files
                 .iter()

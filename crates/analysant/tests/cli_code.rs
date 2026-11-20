@@ -277,3 +277,124 @@ fn a_code_tree_with_no_rust_files_withholds_instead_of_reporting_every_name_miss
         "{text}"
     );
 }
+
+// ---- `[code] dir` in `.analysant/project.toml`: the same run without `--code` ----
+
+const CONFIG_HEAD: &str = "[corpus]\nplan_files = [\"PLAN.md\"]\n";
+
+/// A fixture whose project file carries `extra` after the plan; findings are run with no `--plan`.
+fn configured(name: &str, extra: &str) -> Scratch {
+    let s = fixture(name);
+    s.write(".analysant/project.toml", &format!("{CONFIG_HEAD}{extra}"));
+    s
+}
+
+const NO_CODE_FLAG: [&str; 4] = ["findings", ".", "--project", "demo"];
+const WITH_CODE_FLAG: [&str; 6] = ["findings", ".", "--project", "demo", "--code", "."];
+
+#[test]
+fn a_code_dir_in_the_project_file_gives_the_same_bytes_as_the_flag() {
+    let by_flag = configured("cfg-flag", "");
+    let by_file = configured("cfg-file", "\n[code]\ndir = \".\"\n");
+    let a = run(by_flag.path(), &WITH_CODE_FLAG);
+    let b = run(by_file.path(), &NO_CODE_FLAG);
+    assert!(
+        a.status.success() && b.status.success(),
+        "{} {}",
+        err(&a),
+        err(&b)
+    );
+    assert_eq!(out(&a), out(&b));
+    assert_eq!(doc_rows(&out(&b)).len(), 1, "the lens ran: {}", out(&b));
+    assert!(
+        out(&b).contains("# code: git ls-files (4 tracked, 2 rust)"),
+        "the header names the method: {}",
+        out(&b)
+    );
+    // The aggregate mode is the same too.
+    let ca = run(
+        by_flag.path(),
+        &["counts", ".", "--project", "demo", "--code", "."],
+    );
+    let cb = run(by_file.path(), &["counts", ".", "--project", "demo"]);
+    assert_eq!(out(&ca), out(&cb));
+}
+
+#[test]
+fn the_flag_overrides_the_project_file() {
+    // The file points at `docs` (no Rust files), the flag at the whole tree.
+    let over = configured("cfg-over", "\n[code]\ndir = \"docs\"\n");
+    let plain = configured("cfg-plain", "");
+    let a = run(over.path(), &WITH_CODE_FLAG);
+    let b = run(plain.path(), &WITH_CODE_FLAG);
+    assert!(a.status.success(), "{}", err(&a));
+    assert_eq!(out(&a), out(&b));
+    // And the file alone really does read `docs`: no Rust file there, so the lens withholds or reports it.
+    let only_file = run(over.path(), &NO_CODE_FLAG);
+    assert!(only_file.status.success(), "{}", err(&only_file));
+    assert_ne!(
+        out(&only_file),
+        out(&a),
+        "docs alone is a different code tree"
+    );
+}
+
+#[test]
+fn a_missing_code_dir_is_an_error_naming_it() {
+    let s = configured("cfg-missing", "\n[code]\ndir = \"nowhere\"\n");
+    let o = run(s.path(), &NO_CODE_FLAG);
+    assert_eq!(o.status.code(), Some(2), "{}", err(&o));
+    assert_eq!(out(&o), "");
+    assert!(
+        err(&o).contains("[code]") && err(&o).contains("nowhere"),
+        "{}",
+        err(&o)
+    );
+}
+
+#[test]
+fn a_code_dir_that_is_not_a_git_work_tree_is_an_error_naming_it() {
+    let s = configured("cfg-nogit", "\n[code]\ndir = \"../cfg-nogit-outside\"\n");
+    let outside = s
+        .path()
+        .parent()
+        .expect("a parent")
+        .join("cfg-nogit-outside");
+    fs::create_dir_all(&outside).expect("outside directory");
+    let o = run(s.path(), &NO_CODE_FLAG);
+    let _ = fs::remove_dir_all(&outside);
+    assert_eq!(o.status.code(), Some(2), "{}", err(&o));
+    assert_eq!(out(&o), "");
+    assert!(
+        err(&o).contains("[code]") && err(&o).contains("cfg-nogit-outside"),
+        "{}",
+        err(&o)
+    );
+}
+
+#[test]
+fn without_a_code_key_or_flag_the_lens_does_not_appear() {
+    let s = configured("cfg-none", "");
+    let o = run(s.path(), &NO_CODE_FLAG);
+    assert!(o.status.success(), "{}", err(&o));
+    let text = out(&o);
+    assert!(!text.contains("# code"), "{text}");
+    assert!(doc_rows(&text).is_empty(), "{text}");
+    assert!(!text.contains("doc-vs-code"), "{text}");
+}
+
+#[test]
+fn an_unknown_key_or_table_for_the_code_directory_is_an_error() {
+    for extra in [
+        "\n[code]\ndirs = [\".\"]\n",
+        "\n[code]\ndir = \".\"\nextra = 1\n",
+        "\n[codes]\ndir = \".\"\n",
+        "\n[code]\ndir = 3\n",
+    ] {
+        let s = configured("cfg-typo", extra);
+        let o = run(s.path(), &NO_CODE_FLAG);
+        assert_eq!(o.status.code(), Some(2), "{extra}: {}", err(&o));
+        assert_eq!(out(&o), "", "{extra}");
+        assert!(err(&o).contains("project.toml"), "{extra}: {}", err(&o));
+    }
+}

@@ -18,6 +18,9 @@
 //!
 //! [contradiction]
 //! pairing_stopwords = ["acme"]
+//!
+//! [code]
+//! dir = "."                           # the git work tree whose Rust files the doc-vs-code lens reads
 //! ```
 //!
 //! An unknown table or key is an error: a misspelled key would otherwise be silently ignored, and a
@@ -38,6 +41,9 @@ pub struct ProjectConfig {
     /// `None` when the project declares no ownership convention (ownership is then not applied).
     pub ownership: Option<OwnershipConfig>,
     pub pairing_stopwords: Vec<String>,
+    /// The code tree for the doc-vs-code lens, relative to the project root; `None` when the project names none
+    /// (the lens then runs only if `--code` is given).
+    pub code_dir: Option<String>,
 }
 
 /// A project file that could not be read as configuration.
@@ -97,7 +103,11 @@ impl ProjectConfig {
         let root: toml::Table = text
             .parse()
             .map_err(|e: toml::de::Error| ProjectError(e.to_string()))?;
-        only_keys(&root, "the file", &["corpus", "ownership", "contradiction"])?;
+        only_keys(
+            &root,
+            "the file",
+            &["corpus", "ownership", "contradiction", "code"],
+        )?;
         let mut cfg = Self::default();
         if let Some(t) = subtable(&root, "corpus")? {
             only_keys(t, "[corpus]", &["aliases", "concepts", "plan_files"])?;
@@ -125,6 +135,16 @@ impl ProjectConfig {
             only_keys(t, "[contradiction]", &["pairing_stopwords"])?;
             cfg.pairing_stopwords = strings(t, "pairing_stopwords", "[contradiction]")?;
         }
+        if let Some(t) = subtable(&root, "code")? {
+            only_keys(t, "[code]", &["dir"])?;
+            cfg.code_dir = match t.get("dir") {
+                None => None,
+                Some(v) => match v.as_str() {
+                    Some(s) => Some(s.to_string()),
+                    None => return err("`dir` in [code] must be a string"),
+                },
+            };
+        }
         Ok(cfg)
     }
 }
@@ -138,13 +158,14 @@ mod tests {
         let c = ProjectConfig::parse(
             "[corpus]\naliases = [\"a.txt\"]\nconcepts = [\"c1\", \"c2\"]\nplan_files = [\"P.md\"]\n\
              [ownership]\nrow_word = \"row\"\nrow_start = \". **\"\ncitation_prefix = \"n/\"\n\
-             [contradiction]\npairing_stopwords = [\"acme\"]\n",
+             [contradiction]\npairing_stopwords = [\"acme\"]\n[code]\ndir = \"src\"\n",
         )
         .expect("valid");
         assert_eq!(c.aliases, ["a.txt"]);
         assert_eq!(c.concepts, ["c1", "c2"]);
         assert_eq!(c.plan, ["P.md"]);
         assert_eq!(c.pairing_stopwords, ["acme"]);
+        assert_eq!(c.code_dir.as_deref(), Some("src"));
         let o = c.ownership.expect("ownership");
         assert_eq!(
             (
@@ -170,6 +191,9 @@ mod tests {
             "[corpus]\naliases = \"a.txt\"\n",
             "[corpus]\nconcepts = [1]\n",
             "ownership = 3\n",
+            "[code]\ndirs = [\"src\"]\n",
+            "[code]\ndir = 3\n",
+            "[codes]\ndir = \"src\"\n",
             "not toml at all [",
         ] {
             assert!(ProjectConfig::parse(bad).is_err(), "{bad}");
