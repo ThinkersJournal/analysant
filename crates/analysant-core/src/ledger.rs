@@ -36,6 +36,16 @@ fn kind_tag(kind: UnitKind) -> &'static [u8] {
 /// never reused). It depends on nothing else: not on the order in
 /// which documents are read, not on a counter, not on a salt. Two ledgers, two runs, two branches that
 /// see the same content mint the same id, which is what makes the ledger file union-mergeable.
+///
+/// **What the id is, and is not.** It is an *identity*: a 128-bit value made of two 64-bit FNV-1a
+/// hashes (the low half over the inputs, the high half over the inputs prefixed with a tag), so it
+/// is deterministic and needs no dependency. It is **not** an integrity check and not cryptographic:
+/// collisions are possible (about 2^-64 per pair for honest input, and trivially constructible by an
+/// adversary), and nothing here claims resistance to one. Never use it to verify that text is
+/// unchanged (the ledger file keeps a separate text hash for that, and also not cryptographic).
+/// **Stability:** the output is a public contract that a ledger file depends on; the test
+/// `content_id_stability_vector` pins one value. Changing it changes every id ever written, so it
+/// is a Breaking change (pre-1.0: the second version number).
 pub fn content_id(
     kind: UnitKind,
     document: &str,

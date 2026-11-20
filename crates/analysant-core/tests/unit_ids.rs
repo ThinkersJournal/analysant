@@ -77,3 +77,22 @@ fn content_id_is_the_function_the_ledger_uses() {
         "a later generation of the same content is a different id"
     );
 }
+
+/// A stability vector: EditAnt depends on this exact output (SPEC-STEP1 1.9, "Ledger writer: EditAnt").
+/// A change to it changes every id ever written to a ledger file, so it is a Breaking change.
+#[test]
+fn content_id_stability_vector() {
+    let id = content_id(
+        UnitKind::Claim,
+        "a.md",
+        &path(&["Top", "Sub"]),
+        "The cache is cold.",
+        0,
+        0,
+    );
+    // Checked against an independent implementation (Python, two FNV-1a 64-bit hashes, little-endian counters).
+    assert_eq!(
+        format!("{id:?}"),
+        "UnitId(289813204739674426619144360218466435026)"
+    );
+}
