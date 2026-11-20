@@ -199,3 +199,41 @@ pub fn directed_but_untasked(
         outcomes,
     }
 }
+
+/// What the untasked lens declares about itself (SPEC-STEP1 4.1).
+pub fn spec() -> analysant_core::LensSpec {
+    analysant_core::LensSpec {
+        id: LensId(LENS.to_string()),
+        description: "A claim named in the documents that no plan line mentions; whether the mention is a task is a human's call."
+            .into(),
+        requires: Vec::new(),
+        cost: analysant_core::Cost::Cheap,
+        reads_code: false,
+        kinds: vec!["untasked".into()],
+    }
+}
+
+impl UntaskedRun {
+    /// This run in the shape `health_report` reads. `NoKey` claims are set aside and counted. The run keeps no search record for
+    /// a claim that was mentioned, so an empty result carries no null checks and the report will not call it clean.
+    pub fn output(&self) -> crate::tool::LensOutput {
+        let no_key = self
+            .outcomes
+            .iter()
+            .filter(|o| matches!(o.status, Status::NoKey))
+            .count() as u64;
+        crate::tool::LensOutput {
+            spec: spec(),
+            findings: self.absent().map(|(_, f)| f.clone()).collect(),
+            population: self.outcomes.len() as u64,
+            withheld: self.withheld() as u64,
+            set_aside: if no_key > 0 {
+                vec![("claim has no key".into(), no_key)]
+            } else {
+                Vec::new()
+            },
+            not_analysed: Vec::new(),
+            null_checks: Vec::new(),
+        }
+    }
+}

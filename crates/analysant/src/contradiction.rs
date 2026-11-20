@@ -66,3 +66,16 @@ fn heading_parents(
     path.reverse();
     path
 }
+
+/// What the contradiction lens declares about itself (SPEC-STEP1 4.1). Its pairs are not yet `Finding`s (a pair is not an absence,
+/// so it has no search record to carry); the spec is declared so a caller can see the lens exists and what it needs.
+pub fn spec() -> analysant_core::LensSpec {
+    analysant_core::LensSpec {
+        id: analysant_core::LensId("contradiction".to_string()),
+        description: "A negated statement and a positive one about the same subject; a candidate for a human, not a verdict.".into(),
+        requires: Vec::new(),
+        cost: analysant_core::Cost::Batch,
+        reads_code: false,
+        kinds: vec!["contradiction".into()],
+    }
+}

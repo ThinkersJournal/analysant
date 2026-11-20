@@ -7,6 +7,7 @@
 pub mod en;
 pub mod finding;
 pub mod ledger;
+pub mod lens;
 #[cfg(feature = "markdown")]
 pub mod markdown;
 pub mod model;
@@ -18,6 +19,7 @@ pub use finding::{
     FindingKind, QueryDescription, ScopeDescription, SearchRecord,
 };
 pub use ledger::{Ledger, LedgerEvent};
+pub use lens::{Cost, LensSpec};
 #[cfg(feature = "markdown")]
 pub use markdown::Markdown;
 pub use model::*;

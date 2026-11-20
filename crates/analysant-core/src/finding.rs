@@ -15,6 +15,16 @@ pub enum FindingKind {
     Other(String),
 }
 
+impl FindingKind {
+    /// The kind as the string used in reports and in `FindingId::compute`.
+    pub fn label(&self) -> &str {
+        match self {
+            Self::Untasked => "untasked",
+            Self::Other(s) => s,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Basis {
     Deterministic,
