@@ -1,0 +1,14 @@
+# The reference project's configuration, as data (SPEC-STEP1 2.5 item 5). Paths are relative to the
+# directory that holds `.analysant/`. The project's alias file (`aliases.txt`) stays in the reference
+# copy of the spike, where run v3 onward read it.
+[corpus]
+concepts = ["senses.concepts"]
+
+[ownership]
+row_word = "row"
+row_start = ". **"
+citation_prefix = "design-notes/"
+
+[contradiction]
+# The project's own name identifies nothing in its own corpus.
+pairing_stopwords = ["fuel"]

@@ -1,0 +1,4 @@
+# analysant-lexicon v1 | pack: en | prefixes that mark a list item as a directive
+todo
+[ ]
+[x]

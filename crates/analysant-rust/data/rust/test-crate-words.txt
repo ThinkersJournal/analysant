@@ -1,0 +1,4 @@
+# analysant-lexicon v1 | pack: rust
+# a word in a crate directory name that makes the whole crate test support
+fixture
+test-support

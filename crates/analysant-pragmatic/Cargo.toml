@@ -1,9 +1,12 @@
 [package]
 name = "analysant-pragmatic"
-description = "AnalysAnt: analysant-pragmatic (placeholder; no API yet)"
+description = "AnalysAnt pragmatic lens: what a claim is doing (directive, description, status note, name), by rule, with the rule as the reason"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+
+[dependencies]
+analysant-core = { path = "../analysant-core", version = "0.1.1" }

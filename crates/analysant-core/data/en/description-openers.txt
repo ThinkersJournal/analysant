@@ -1,0 +1,9 @@
+# analysant-lexicon v1 | pack: en | words that open a noun phrase; an item opening with one and a copula in its first words describes
+the
+a
+an
+this
+these
+that
+each
+every

@@ -1,0 +1,15 @@
+[package]
+name = "analysant-rust"
+description = "AnalysAnt: the Rust language pack; code items, uses and comment mentions as ground truth for doc-vs-code relations"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+analysant-core = { path = "../analysant-core", version = "0.1.1" }
+syn = { version = "3.0.10", default-features = false, features = ["full", "parsing", "printing", "clone-impls"] }
+proc-macro2 = { version = "1.0.107", features = ["span-locations"] }
+quote = "1.0.47"

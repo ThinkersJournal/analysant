@@ -118,7 +118,13 @@ fn the_check_can_fail() {
 fn no_engine_source_hard_codes_a_project_or_a_word_list() {
     let lexicon = lexicon_entries();
     let mut files = Vec::new();
-    for krate in ["analysant-core", "analysant-lexical", "analysant"] {
+    for krate in [
+        "analysant-core",
+        "analysant-lexical",
+        "analysant-logical",
+        "analysant-rust",
+        "analysant",
+    ] {
         rust_files(&manifest().join("..").join(krate).join("src"), &mut files);
     }
     // Population stated beside the null: the check read these files.

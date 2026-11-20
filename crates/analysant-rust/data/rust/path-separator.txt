@@ -1,0 +1,3 @@
+# analysant-lexicon v1 | pack: rust
+# the separator between a type and its member in a qualified name
+::

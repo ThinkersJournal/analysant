@@ -31,6 +31,32 @@ jobs:
       - run: cargo build --locked --workspace --all-targets
       - run: cargo test --locked --workspace --no-fail-fast
 
+  # Slice 5's real-tree gate (pm-ants 2026-11-19): the reference tree is public, so GitHub can run it; it must fail, not skip.
+  reference-gate:
+    name: Gate A rows on the reference tree (fuel@b0d74efa)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: ThinkersJournal/fuel
+          ref: b0d74efafed63d9700ec62f652468b197dd46a88
+          path: reference-fuel
+          fetch-depth: 1
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+        with:
+          toolchain: stable
+      - name: The checked-out tree is the one the gate was measured on
+        run: |
+          test "$(git -C reference-fuel rev-parse HEAD)" = b0d74efafed63d9700ec62f652468b197dd46a88
+          n=$(find reference-fuel -name '*.rs' -not -path '*/.git/*' | wc -l)
+          echo "rs files: $n"
+          test "$n" -eq 951
+      - run: cargo test --locked -p analysant-rust --test gate_rows -- --nocapture
+        env:
+          ANALYSANT_REFERENCE_CODE: ${{ github.workspace }}/reference-fuel
+          ANALYSANT_REQUIRE_REFERENCE: "1"
+
   deny:
     name: cargo deny (advisories, licences, bans, sources)
     runs-on: ubuntu-latest

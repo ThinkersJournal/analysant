@@ -1,0 +1,4 @@
+# analysant-lexicon v1 | pack: en | decision-outcome words (past participles of a decision)
+rejected
+withdrawn
+declined

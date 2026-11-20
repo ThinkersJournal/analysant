@@ -1,0 +1,7 @@
+# analysant-lexicon v1 | pack: en | temporal prepositions
+after
+before
+during
+until
+when
+while

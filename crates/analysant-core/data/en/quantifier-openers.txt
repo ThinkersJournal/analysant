@@ -1,0 +1,7 @@
+# analysant-lexicon v1 | pack: en | words that quantify or negate rather than name
+no
+few
+only
+not
+never
+none

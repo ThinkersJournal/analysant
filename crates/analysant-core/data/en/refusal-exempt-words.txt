@@ -1,0 +1,2 @@
+# analysant-lexicon v1 | pack: en | words that, after a refusal word, do not name a capability ("no longer" is temporal)
+longer

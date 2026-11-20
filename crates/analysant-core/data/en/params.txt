@@ -9,3 +9,11 @@ shouting_percent = 80
 ident_max_chars = 80
 head_max_content_words = 8
 head_bold_min_words = 2
+copula_window = 8
+# The contradiction lens (analysant-logical).
+head_window_tokens = 16
+family_prefix_min = 6
+strong_token_min = 6
+strong_shared_min = 2
+positive_subject_min = 2
+subject_token_min_chars = 2

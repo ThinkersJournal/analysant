@@ -1,9 +1,14 @@
 [package]
 name = "analysant-semantic"
-description = "AnalysAnt: analysant-semantic (placeholder; no API yet)"
+description = "AnalysAnt: layered concept store with a sense table, term resolution by cues, and table-driven term relations"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
+
+[dependencies]
+analysant-core = { path = "../analysant-core", version = "0.1.1" }
+analysant-lexical = { path = "../analysant-lexical", version = "0.1.1" }
+semanticant-core = "0.1.0"

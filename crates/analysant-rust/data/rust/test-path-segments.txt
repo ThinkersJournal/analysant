@@ -1,0 +1,6 @@
+# analysant-lexicon v1 | pack: rust
+# a path segment that makes a file test code
+tests
+tests.rs
+benches
+benches.rs

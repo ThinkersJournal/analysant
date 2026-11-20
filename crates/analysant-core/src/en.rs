@@ -21,6 +21,36 @@ const IDENTIFIER_MARKERS: &str = include_str!("../data/en/identifier-markers.txt
 const ABBREVIATIONS: &str = include_str!("../data/en/abbreviations.txt");
 const PARAMS: &str = include_str!("../data/en/params.txt");
 
+const STATUS_MARKERS: &str = include_str!("../data/en/status-markers.txt");
+const OUTCOME_MARKERS: &str = include_str!("../data/en/outcome-markers.txt");
+const IMPERATIVES: &str = include_str!("../data/en/imperatives.txt");
+const MODALS: &str = include_str!("../data/en/modals.txt");
+const DESCRIPTIVE_SECTIONS: &str = include_str!("../data/en/descriptive-sections.txt");
+const SENTENCE_MARKERS: &str = include_str!("../data/en/sentence-markers.txt");
+const SENTENCE_OPENINGS: &str = include_str!("../data/en/sentence-openings.txt");
+const FINITE_VERBS: &str = include_str!("../data/en/finite-verbs.txt");
+const PREPOSITIONS: &str = include_str!("../data/en/prepositions.txt");
+const PARTICIPLES: &str = include_str!("../data/en/participles.txt");
+const TEMPORAL_PREPOSITIONS: &str = include_str!("../data/en/temporal-prepositions.txt");
+const DIRECTIVE_PREFIXES: &str = include_str!("../data/en/directive-prefixes.txt");
+const DESCRIPTION_OPENERS: &str = include_str!("../data/en/description-openers.txt");
+const COPULAS: &str = include_str!("../data/en/copulas.txt");
+const QUANTIFIER_OPENERS: &str = include_str!("../data/en/quantifier-openers.txt");
+const TEMPORAL_TAILS: &str = include_str!("../data/en/temporal-tails.txt");
+const RULE_OPENERS: &str = include_str!("../data/en/rule-openers.txt");
+const ADVERB_SUFFIXES: &str = include_str!("../data/en/adverb-suffixes.txt");
+const GERUND_SUFFIXES: &str = include_str!("../data/en/gerund-suffixes.txt");
+const NOT_YET_PHRASES: &str = include_str!("../data/en/not-yet-phrases.txt");
+const NEGATION_BAD_WORDS: &str = include_str!("../data/en/negation-bad-words.txt");
+const NEGATION_PHRASES: &str = include_str!("../data/en/negation-phrases.txt");
+const NEGATION_WORDS: &str = include_str!("../data/en/negation-words.txt");
+const TEMPORAL_PHRASES: &str = include_str!("../data/en/temporal-phrases.txt");
+const TEMPORAL_WORDS: &str = include_str!("../data/en/temporal-words.txt");
+const REFUSAL_WORDS: &str = include_str!("../data/en/refusal-words.txt");
+const REFUSAL_EXEMPT_WORDS: &str = include_str!("../data/en/refusal-exempt-words.txt");
+const CONTRAST_SEPARATORS: &str = include_str!("../data/en/contrast-separators.txt");
+const PAIRING_STOPWORDS: &str = include_str!("../data/en/pairing-stopwords.txt");
+
 /// Parameters the extraction rules read. Checked once, at construction.
 const REQUIRED_PARAMS: &[&str] = &[
     "item_min_chars",
@@ -76,6 +106,35 @@ impl English {
         lexicons.add_lexicon("name-reject-punct", NAME_REJECT_PUNCT);
         lexicons.add_lexicon("identifier-markers", IDENTIFIER_MARKERS);
         lexicons.add_lexicon("abbreviations", ABBREVIATIONS);
+        lexicons.add_lexicon("status-markers", STATUS_MARKERS);
+        lexicons.add_lexicon("outcome-markers", OUTCOME_MARKERS);
+        lexicons.add_lexicon("imperatives", IMPERATIVES);
+        lexicons.add_lexicon("modals", MODALS);
+        lexicons.add_lexicon("descriptive-sections", DESCRIPTIVE_SECTIONS);
+        lexicons.add_lexicon("sentence-markers", SENTENCE_MARKERS);
+        lexicons.add_lexicon("sentence-openings", SENTENCE_OPENINGS);
+        lexicons.add_lexicon("finite-verbs", FINITE_VERBS);
+        lexicons.add_lexicon("prepositions", PREPOSITIONS);
+        lexicons.add_lexicon("participles", PARTICIPLES);
+        lexicons.add_lexicon("temporal-prepositions", TEMPORAL_PREPOSITIONS);
+        lexicons.add_lexicon("directive-prefixes", DIRECTIVE_PREFIXES);
+        lexicons.add_lexicon("description-openers", DESCRIPTION_OPENERS);
+        lexicons.add_lexicon("copulas", COPULAS);
+        lexicons.add_lexicon("quantifier-openers", QUANTIFIER_OPENERS);
+        lexicons.add_lexicon("temporal-tails", TEMPORAL_TAILS);
+        lexicons.add_lexicon("rule-openers", RULE_OPENERS);
+        lexicons.add_lexicon("adverb-suffixes", ADVERB_SUFFIXES);
+        lexicons.add_lexicon("gerund-suffixes", GERUND_SUFFIXES);
+        lexicons.add_lexicon("not-yet-phrases", NOT_YET_PHRASES);
+        lexicons.add_lexicon("negation-bad-words", NEGATION_BAD_WORDS);
+        lexicons.add_lexicon("negation-phrases", NEGATION_PHRASES);
+        lexicons.add_lexicon("negation-words", NEGATION_WORDS);
+        lexicons.add_lexicon("temporal-phrases", TEMPORAL_PHRASES);
+        lexicons.add_lexicon("temporal-words", TEMPORAL_WORDS);
+        lexicons.add_lexicon("refusal-words", REFUSAL_WORDS);
+        lexicons.add_lexicon("refusal-exempt-words", REFUSAL_EXEMPT_WORDS);
+        lexicons.add_lexicon("contrast-separators", CONTRAST_SEPARATORS);
+        lexicons.add_lexicon("pairing-stopwords", PAIRING_STOPWORDS);
         if let Err(e) = lexicons.add_params("params", PARAMS) {
             panic!("en pack data is malformed: {e}");
         }

@@ -1,0 +1,3 @@
+# analysant-params v1 | pack: rust
+# name = integer
+max_listed_sites = 8

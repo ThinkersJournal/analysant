@@ -1,0 +1,16 @@
+# analysant-lexicon v1 | pack: en | status/history markers (reference spike pragmatic.rs STATUS_MARKERS)
+as-built
+as built
+no longer
+retired
+superseded
+deleted
+is gone
+gone
+struck
+survived
+currently
+was a 
+was the 
+was deleted
+listed here as current until

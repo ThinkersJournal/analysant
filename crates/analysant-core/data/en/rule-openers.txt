@@ -1,0 +1,2 @@
+# analysant-lexicon v1 | pack: en | item-opening words that state a rule
+rule
