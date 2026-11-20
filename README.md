@@ -21,7 +21,7 @@ The seed sense table for the reference corpus reproduces the spike's triage; it 
 - Four "budget" pairs (a resource budget against a byte budget) are removed only by a sense cued on "consumer contract" in the
   section path. Without that cue the lens keeps four pairs the spike's report calls noise.
 - Three "lifecycle" pairs are removed only by an `md` cue (the positive sides are links to a document).
-- Sixteen pairs remain, and four noise classes are not handled: a denied token absent from the positive side, bare labels,
-  scoped negation, and scope notes.
+- Sixteen pairs remain, and five noise classes are not handled: a denied token absent from the positive side, bare labels,
+  scoped negation, scope notes, and a copula classification (15 pairs; the 16th is the real one).
 
 The table is not tuned further on the pairs it already reproduces. Whether it generalises is for Gate B (non-reference projects).
