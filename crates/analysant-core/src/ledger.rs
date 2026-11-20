@@ -29,9 +29,11 @@ fn kind_tag(kind: UnitKind) -> &'static [u8] {
 }
 
 /// The one id scheme for every unit kind: a function of the unit kind, document, section path and
-/// text, of how many units with that same content the ledger had already minted (`occurrence`, which
-/// tells identical sentences in one section apart) and of `generation` (how many earlier units of that
-/// content were retired, so an id is never reused). It depends on nothing else: not on the order in
+/// text, of `occurrence` (the index of this unit among units of identical kind, document, section path
+/// and text minted in the same pass over that document; it tells identical sentences apart) and of
+/// `generation` (how many units of that same content, in the ledger file's state for that document,
+/// were minted before, whether live, edited since or gone; it is 0 with no ledger file, so an id is
+/// never reused). It depends on nothing else: not on the order in
 /// which documents are read, not on a counter, not on a salt. Two ledgers, two runs, two branches that
 /// see the same content mint the same id, which is what makes the ledger file union-mergeable.
 pub fn content_id(
