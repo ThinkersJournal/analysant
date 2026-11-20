@@ -6,6 +6,8 @@
 pub mod contradiction;
 pub mod corpus;
 pub mod gate_b;
+pub mod identity;
+pub mod ledger_file;
 pub mod ownership;
 pub mod pragmatic;
 pub mod project;

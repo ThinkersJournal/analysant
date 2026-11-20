@@ -13,8 +13,28 @@ use std::fmt;
 pub struct UnitId(u128);
 
 impl UnitId {
-    pub(crate) const fn from_raw(raw: u128) -> Self {
+    /// Build an id from its raw 128 bits. For a ledger writer that mints ids and for a reader that
+    /// restores them; analysis code gets ids from a ledger and never calls this.
+    pub const fn from_raw(raw: u128) -> Self {
         Self(raw)
+    }
+
+    /// The inverse of `Display`: 26 base32 characters, the top two bits zero. `None` for anything
+    /// else, so a corrupt ledger line cannot become an id.
+    pub fn parse(s: &str) -> Option<Self> {
+        let bytes = s.as_bytes();
+        if bytes.len() != 26 {
+            return None;
+        }
+        let mut v: u128 = 0;
+        for (i, b) in bytes.iter().enumerate() {
+            let digit = BASE32.iter().position(|c| c == b)? as u128;
+            if i == 0 && digit > 7 {
+                return None;
+            }
+            v = (v << 5) | digit;
+        }
+        Some(Self(v))
     }
 
     /// The raw 128 bits. For storage and hashing; do not interpret them.
