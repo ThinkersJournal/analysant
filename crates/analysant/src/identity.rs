@@ -17,11 +17,10 @@
 //! nothing (SPEC 1.9: only the writing tool owns the file).
 
 use crate::ledger_file::{Event, UnitKindName, UnitState, build, mint_key};
-use analysant_core::finding::fnv1a;
 use analysant_core::{
     Basis, ClaimRef, ControlKind, ControlOutcome, ControlResult, Derivation, Disposition, Finding,
     FindingId, FindingKind, LanguagePack, LensId, QueryDescription, ScopeDescription, SearchRecord,
-    UnitId, normalize,
+    UnitId, UnitKind, content_id, normalize,
 };
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -122,18 +121,14 @@ fn mint_id(
     occurrence: u64,
     generation: u64,
 ) -> UnitId {
-    let path_text = path.join("\u{1f}");
-    let parts: [&[u8]; 5] = [
-        document.as_bytes(),
-        path_text.as_bytes(),
-        text.as_bytes(),
-        &occurrence.to_le_bytes(),
-        &generation.to_le_bytes(),
-    ];
-    let lo = fnv1a(&parts);
-    let hi_parts: [&[u8]; 6] = [b"hi", parts[0], parts[1], parts[2], parts[3], parts[4]];
-    let hi = fnv1a(&hi_parts);
-    UnitId::from_raw((u128::from(hi) << 64) | u128::from(lo))
+    content_id(
+        UnitKind::Claim,
+        document,
+        path,
+        text,
+        occurrence,
+        generation,
+    )
 }
 
 /// Align `observed` (one document, reading order) to the live claims of `document` in `prior`.

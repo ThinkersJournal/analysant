@@ -509,3 +509,17 @@ fn two_branches_that_reword_one_claim_differently_are_a_conflict_and_nothing_is_
     assert!(texts.iter().any(|t| t.contains("incoming")));
     assert!(texts.iter().any(|t| t.contains("single")));
 }
+
+/// The path for wiring `reidentify` into `extract_corpus` (pm-ants ruling 2026-11-20): with one id
+/// scheme, a first extraction already mints the ids the ledger file would record.
+#[test]
+fn a_fresh_reidentify_mints_the_ids_extraction_gives_every_claim() {
+    let en = English::new();
+    let mut scratch = Ledger::default();
+    let doc = extract_document(&Markdown, &en, &mut scratch, DOC, V1);
+    let mut ev = Vec::new();
+    let (r, _) = cycle(&mut ev, V1);
+    let from_extraction: Vec<UnitId> = doc.claims.iter().map(|c| c.unit.id).collect();
+    let from_identity: Vec<UnitId> = r.assignments.iter().map(|a| a.unit).collect();
+    assert_eq!(from_extraction, from_identity);
+}

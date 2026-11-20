@@ -18,7 +18,7 @@ pub use finding::{
     Basis, ControlKind, ControlOutcome, ControlResult, Disposition, Finding, FindingId,
     FindingKind, QueryDescription, ScopeDescription, SearchRecord,
 };
-pub use ledger::{Ledger, LedgerEvent};
+pub use ledger::{Ledger, LedgerEvent, content_id};
 pub use lens::{Cost, LensSpec};
 #[cfg(feature = "markdown")]
 pub use markdown::Markdown;

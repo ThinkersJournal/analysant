@@ -127,10 +127,10 @@ fn golden_findings() -> String {
 # lens untasked: analysed (plan lines 3, claims 4, absent 3, set aside 0, owned 0, withheld 0, mentioned 1)\n\
 # lens contradiction: analysed (pairs 1, suppressed 0)\n\
 # columns: project file line lens kind id refs search control text\n\
-demo\tdocs/arch.md\t6\tuntasked\tuntasked\tf-aa71cbd3acad53a1\tform=ListItem\tplan-lines=3;key=add retry queue failed uploads;matched=0\tSelfFind:found\tAdd a retry queue for failed uploads.\n\
-demo\tdocs/arch.md\t7\tuntasked\tuntasked\tf-5364e5a90922f26a\tform=ListItem\tplan-lines=3;key=support streaming ingestion;matched=0\tSelfFind:found\tSupport streaming ingestion.\n\
+demo\tdocs/arch.md\t6\tuntasked\tuntasked\tf-616a18a4e52f0737\tform=ListItem\tplan-lines=3;key=add retry queue failed uploads;matched=0\tSelfFind:found\tAdd a retry queue for failed uploads.\n\
+demo\tdocs/arch.md\t7\tuntasked\tuntasked\tf-6b61b611c12a0c30\tform=ListItem\tplan-lines=3;key=support streaming ingestion;matched=0\tSelfFind:found\tSupport streaming ingestion.\n\
 demo\tdocs/limits.md\t3\tcontradiction\tcontradiction\t{id}\tpositive=docs/arch.md:7\tshared=streaming,ingestion;negated_by=not supported\t-\tnegated: Streaming ingestion is not supported. || positive: Support streaming ingestion.\n\
-demo\tdocs/limits.md\t3\tuntasked\tuntasked\tf-bb22994396c8e4f0\tform=ListItem\tplan-lines=3;key=streaming ingestion not supported;matched=0\tSelfFind:found\tStreaming ingestion is not supported.\n"
+demo\tdocs/limits.md\t3\tuntasked\tuntasked\tf-83fd72a5a850e73d\tform=ListItem\tplan-lines=3;key=streaming ingestion not supported;matched=0\tSelfFind:found\tStreaming ingestion is not supported.\n"
     )
 }
 
