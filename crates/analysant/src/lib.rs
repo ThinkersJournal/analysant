@@ -5,6 +5,7 @@
 
 pub mod contradiction;
 pub mod corpus;
+pub mod gate_b;
 pub mod ownership;
 pub mod pragmatic;
 pub mod project;
