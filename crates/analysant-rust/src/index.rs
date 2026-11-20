@@ -97,6 +97,11 @@ impl CodeIndex {
             .as_ref()
             .expect("a CodeIndex is built by CodeIndex::new")
     }
+    /// The name `text` refers to in this tree's language, in the form `relate` takes, or `None` when
+    /// it does not name a code item (see `RustPack::code_reference`).
+    pub fn code_reference(&self, text: &str) -> Option<String> {
+        self.pack().code_reference(text)
+    }
 
     pub fn file_count(&self) -> usize {
         self.files.len()

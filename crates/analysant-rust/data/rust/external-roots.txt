@@ -1,0 +1,5 @@
+# analysant-lexicon v1 | pack: rust
+# the first segment of a path that names the standard library, not this tree's code
+std
+core
+alloc

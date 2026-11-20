@@ -10,6 +10,7 @@ dependencies = [
  "analysant-lexical",
  "analysant-logical",
  "analysant-pragmatic",
+ "analysant-rust",
  "analysant-semantic",
  "serde",
  "serde_json",

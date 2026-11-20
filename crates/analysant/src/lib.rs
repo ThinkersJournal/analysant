@@ -5,6 +5,7 @@
 
 pub mod contradiction;
 pub mod corpus;
+pub mod doccode;
 pub mod gate_b;
 pub mod identity;
 pub mod judging;

@@ -14,6 +14,7 @@
 //!   and the same input gives the same bytes. The aggregate view carries counts only: no path, no text and no
 //!   revision, so a private project can be reported without publishing what is in it.
 
+use crate::doccode;
 use crate::ownership::{Owners, partition_owned};
 use crate::pragmatic::classify_corpus;
 use crate::project::ProjectConfig;
@@ -23,6 +24,7 @@ use analysant_core::{English, FindingId, Ledger, Markdown};
 use analysant_lexical::{AliasTable, MatchMode};
 use analysant_logical::{Config as LogicalConfig, ContradictionLens};
 use analysant_pragmatic::{Config as PragmaticConfig, PragmaticLens};
+use analysant_rust::{CodeIndex, RustPack};
 use analysant_semantic::{ConceptStore, LayerSource};
 use std::collections::BTreeMap;
 use std::fmt;
@@ -164,10 +166,22 @@ pub struct Production {
     pub unreadable: usize,
     pub untasked: LensStatus,
     pub contradiction: LensStatus,
+    /// The code tree the doc-vs-code lens read, or `None` when no `--code` was given (the lens then does not appear).
+    pub code: Option<CodeSummary>,
     /// Findings per `(lens, kind)`; a kind a lens declares but did not run has no entry.
     pub counts: BTreeMap<(String, String), usize>,
     /// Sorted.
     pub rows: Vec<Row>,
+}
+
+/// The code tree behind the doc-vs-code lens, enumerated like the documents: by `git ls-files`.
+#[derive(Clone, Debug)]
+pub struct CodeSummary {
+    pub tracked: usize,
+    pub rust: usize,
+    pub revision: Option<String>,
+    pub dirty: bool,
+    pub status: LensStatus,
 }
 
 /// What a caller chooses; everything else comes from the project.
@@ -176,6 +190,8 @@ pub struct Options {
     pub project: String,
     /// Plan files named on the command line, added to the project file's.
     pub plan: Vec<String>,
+    /// A code directory (a git work tree) for the doc-vs-code lens; without it the lens does not run.
+    pub code: Option<String>,
 }
 
 fn is_markdown(path: &str) -> bool {
@@ -407,6 +423,83 @@ pub fn produce(root: &Path, opts: &Options) -> Result<Production, ProduceError> 
         found.suppressed.len()
     ));
 
+    let code = match &opts.code {
+        None => None,
+        Some(dir) => {
+            let code_root = Path::new(dir);
+            let code_enum = enumerate(code_root)?;
+            let rust_files: Vec<&String> = code_enum
+                .files
+                .iter()
+                .filter(|f| {
+                    Path::new(f.as_str())
+                        .extension()
+                        .is_some_and(|e| e.eq_ignore_ascii_case("rs"))
+                })
+                .collect();
+            let mut index = CodeIndex::new(RustPack::new());
+            let mut code_unreadable = 0usize;
+            for rel in &rust_files {
+                match std::fs::read_to_string(code_root.join(rel.as_str())) {
+                    Ok(text) => index.add_source(rel, &text),
+                    Err(_) => code_unreadable += 1,
+                }
+            }
+            let run = doccode::doc_vs_code(&corpus, &index);
+            let claims: Vec<_> = corpus.claims().collect();
+            for (i, f) in run.findings() {
+                let (doc, claim) = claims[i];
+                rows.push(Row {
+                    project: opts.project.clone(),
+                    file: doc.path.clone(),
+                    line: claim.unit.source.span.line_start,
+                    lens: f.lens.0.clone(),
+                    kind: f.kind.label().to_string(),
+                    id: f.id.0.clone(),
+                    refs: format!("code={}", doccode::code_ref(f)),
+                    search: format!(
+                        "files={};items={};query={};matched={}",
+                        run.files, f.search.population, f.search.query.key, f.search.matched
+                    ),
+                    control: format!(
+                        "{:?}:{}",
+                        f.control.kind,
+                        format!("{:?}", f.control.outcome).to_lowercase()
+                    ),
+                    text: f.statement.clone(),
+                });
+            }
+            let dspec = doccode::spec();
+            for kind in &dspec.kinds {
+                let n = run
+                    .findings()
+                    .filter(|(_, f)| f.kind.label() == kind.as_str())
+                    .count();
+                counts.insert((dspec.id.0.clone(), kind.clone()), n);
+            }
+            let mut detail = format!(
+                "named {}, findings {}, withheld {}, resolved {}",
+                run.named(),
+                run.findings().count(),
+                run.withheld(),
+                run.resolved()
+            );
+            if !index.failures().is_empty() {
+                detail += &format!(", parse failures {}", index.failures().len());
+            }
+            if code_unreadable > 0 {
+                detail += &format!(", unreadable {code_unreadable}");
+            }
+            Some(CodeSummary {
+                tracked: code_enum.files.len(),
+                rust: rust_files.len(),
+                revision: code_enum.revision,
+                dirty: code_enum.dirty,
+                status: LensStatus::Analysed(detail),
+            })
+        }
+    };
+
     rows.sort();
     Ok(Production {
         project: opts.project.clone(),
@@ -420,6 +513,7 @@ pub fn produce(root: &Path, opts: &Options) -> Result<Production, ProduceError> 
         unreadable,
         untasked: untasked_status,
         contradiction: contradiction_status,
+        code,
         counts,
         rows,
     })
@@ -478,7 +572,7 @@ impl Production {
         } else {
             "clean"
         };
-        vec![
+        let mut lines = vec![
             format!("# {format}"),
             format!("# project: {}", self.project),
             format!(
@@ -497,7 +591,31 @@ impl Production {
             ),
             format!("# lens {}: {}", untasked::LENS, self.untasked),
             format!("# lens contradiction: {}", self.contradiction),
-        ]
+        ];
+        // The code tree is named only when it was read: without `--code` the header is exactly what it was.
+        if let Some(code) = &self.code {
+            let (code_revision, code_worktree) = if aggregate {
+                (
+                    "withheld (aggregate)".to_string(),
+                    "withheld (aggregate)".to_string(),
+                )
+            } else {
+                (
+                    code.revision
+                        .clone()
+                        .unwrap_or_else(|| "none (no commits)".to_string()),
+                    if code.dirty { "dirty" } else { "clean" }.to_string(),
+                )
+            };
+            lines.push(format!(
+                "# code: git ls-files ({} tracked, {} rust)",
+                code.tracked, code.rust
+            ));
+            lines.push(format!("# code revision: {code_revision}"));
+            lines.push(format!("# code worktree: {code_worktree}"));
+            lines.push(format!("# lens {}: {}", doccode::LENS, code.status));
+        }
+        lines
     }
 
     /// The findings, one line each, after the header. Ends with a newline.
@@ -515,7 +633,7 @@ impl Production {
             LensStatus::Analysed(d) => serde_json::json!({"analysed": true, "detail": d}),
             LensStatus::NotAnalysed(r) => serde_json::json!({"analysed": false, "detail": r}),
         };
-        let header = serde_json::json!({
+        let mut header = serde_json::json!({
             "type": "header",
             "format": FINDINGS_FORMAT,
             "project": self.project,
@@ -537,6 +655,16 @@ impl Production {
                 "contradiction": status(&self.contradiction),
             },
         });
+        if let Some(code) = &self.code {
+            header["code"] = serde_json::json!({
+                "method": "git ls-files",
+                "tracked_files": code.tracked,
+                "rust_files": code.rust,
+                "revision": code.revision,
+                "worktree": if code.dirty { "dirty" } else { "clean" },
+            });
+            header["lenses"][doccode::LENS] = status(&code.status);
+        }
         let mut out = vec![header.to_string()];
         for r in &self.rows {
             let mut object = serde_json::Map::new();
@@ -567,7 +695,11 @@ impl Production {
         let mut out: Vec<String> = self.header(COUNTS_FORMAT, true);
         out.push("# columns: lens kind count".to_string());
         let mut kinds: BTreeMap<(String, String), String> = BTreeMap::new();
-        for spec in [untasked::spec(), contradiction::spec()] {
+        let mut specs = vec![untasked::spec(), contradiction::spec()];
+        if self.code.is_some() {
+            specs.push(doccode::spec());
+        }
+        for spec in specs {
             for kind in spec.kinds {
                 let key = (spec.id.0.clone(), kind);
                 let shown = self

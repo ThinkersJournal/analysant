@@ -56,6 +56,10 @@ jobs:
         env:
           ANALYSANT_REFERENCE_CODE: ${{ github.workspace }}/reference-fuel
           ANALYSANT_REQUIRE_REFERENCE: "1"
+      - run: cargo test --locked -p analysant --test doccode_real -- --nocapture
+        env:
+          ANALYSANT_REFERENCE_CODE: ${{ github.workspace }}/reference-fuel
+          ANALYSANT_REQUIRE_REFERENCE: "1"
 
   deny:
     name: cargo deny (advisories, licences, bans, sources)

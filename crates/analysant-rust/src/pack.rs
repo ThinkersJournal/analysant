@@ -18,6 +18,8 @@ const TEST_PATH_SEGMENTS: &str = include_str!("../data/rust/test-path-segments.t
 const TEST_CRATE_WORDS: &str = include_str!("../data/rust/test-crate-words.txt");
 const PATH_SEPARATOR: &str = include_str!("../data/rust/path-separator.txt");
 const ENTRY_POINTS: &str = include_str!("../data/rust/entry-points.txt");
+const EXTERNAL_ROOTS: &str = include_str!("../data/rust/external-roots.txt");
+const PATH_PREFIX_WORDS: &str = include_str!("../data/rust/path-prefix-words.txt");
 const PARAMS: &str = include_str!("../data/rust/params.txt");
 
 const REQUIRED_PARAMS: &[&str] = &["max_listed_sites"];
@@ -104,6 +106,8 @@ impl RustPack {
             ("test-crate-words", TEST_CRATE_WORDS),
             ("entry-points", ENTRY_POINTS),
             ("path-separator", PATH_SEPARATOR),
+            ("external-roots", EXTERNAL_ROOTS),
+            ("path-prefix-words", PATH_PREFIX_WORDS),
         ] {
             lexicons.add_lexicon(name, text);
         }
@@ -140,6 +144,8 @@ impl RustPack {
             "test-path-segments",
             "entry-points",
             "path-separator",
+            "external-roots",
+            "path-prefix-words",
         ] {
             assert!(
                 !pack.lexicons.entries(n).is_empty(),
@@ -163,6 +169,57 @@ impl RustPack {
         first.is_some_and(|f| self.test_crate_words.iter().any(|w| f.contains(w.as_str())))
     }
 
+    /// The name a document's text refers to, in the form `CodeIndex::relate` takes (`name` or
+    /// `Type::member`), or `None` when the text does not name an item of this tree: it is not
+    /// identifier-shaped, it is a bare lowercase word with nothing that marks it as code, or its path
+    /// starts in the standard library. Leading `crate`/`self`/`super` segments are dropped.
+    ///
+    /// Identifier-shaped is a Rust convention, so it lives here and not in the engine: segments are
+    /// separated by the pack's path separator, each is letters, digits and `_` not starting with a
+    /// digit, and the name is *marked* as code by a trailing call, a path of two segments or more,
+    /// an `_`, or a lower-to-upper change of case (`pick_route`, `PlanStore`, `Cache::resolve`).
+    pub fn code_reference(&self, text: &str) -> Option<String> {
+        let sep = self.path_separator();
+        let trimmed = text.trim();
+        let (body, called) = match trimmed.strip_suffix("()") {
+            Some(b) => (b, true),
+            None => (trimmed, false),
+        };
+        let mut segments: Vec<&str> = body.split(sep).collect();
+        let is_ident = |s: &str| {
+            let mut chars = s.chars();
+            chars.next().is_some_and(|c| c.is_alphabetic() || c == '_')
+                && s.chars().all(|c| c.is_alphanumeric() || c == '_')
+        };
+        if segments.iter().any(|s| !is_ident(s)) {
+            return None;
+        }
+        while segments.len() > 1
+            && self
+                .lexicons
+                .entries("path-prefix-words")
+                .iter()
+                .any(|w| w == segments[0])
+        {
+            segments.remove(0);
+        }
+        if segments.len() > 1
+            && self
+                .lexicons
+                .entries("external-roots")
+                .iter()
+                .any(|w| w == segments[0])
+        {
+            return None;
+        }
+        let last = segments.last().copied()?;
+        let case_change = last
+            .chars()
+            .zip(last.chars().skip(1))
+            .any(|(a, b)| a.is_lowercase() && b.is_uppercase());
+        let marked = called || segments.len() > 1 || last.contains('_') || case_change;
+        marked.then(|| segments.join(sep))
+    }
     /// The separator in a qualified name (`Type` + separator + `member`).
     pub fn path_separator(&self) -> &str {
         self.lexicons

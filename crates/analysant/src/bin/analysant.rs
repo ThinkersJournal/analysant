@@ -3,8 +3,8 @@
 //! code (0 done, 2 refused or misused). All behaviour that can be tested lives in the library.
 //!
 //! ```text
-//! analysant findings <dir> [--plan PATH]... [--project NAME] [--format tsv|jsonl]
-//! analysant counts   <dir> [--plan PATH]... [--project NAME]
+//! analysant findings <dir> [--plan PATH]... [--project NAME] [--code DIR] [--format tsv|jsonl]
+//! analysant counts   <dir> [--plan PATH]... [--project NAME] [--code DIR]
 //! analysant sample   <findings-file> --seed N [--kind LENS/KIND]
 //! analysant judge report <sample-file> <verdicts-file> --judge J --pass-percent P [--second J2] [--void-below K]
 //! analysant judge append <verdicts-file> --id ID --verdict V [--class C] --reason R --judge J
@@ -23,8 +23,8 @@ use std::path::Path;
 use std::process::ExitCode;
 
 const USAGE: &str = "usage:
-  analysant findings <dir> [--plan PATH]... [--project NAME] [--format tsv|jsonl]
-  analysant counts   <dir> [--plan PATH]... [--project NAME]
+  analysant findings <dir> [--plan PATH]... [--project NAME] [--code DIR] [--format tsv|jsonl]
+  analysant counts   <dir> [--plan PATH]... [--project NAME] [--code DIR]
   analysant sample   <findings-file> --seed N [--kind LENS/KIND]
   analysant judge report <sample-file> <verdicts-file> --judge J --pass-percent P [--second J2] [--void-below K]
   analysant judge append <verdicts-file> --id ID --verdict TRUE|FALSE|UNJUDGEABLE [--class C] --reason R --judge J
@@ -32,6 +32,7 @@ const USAGE: &str = "usage:
   analysant --help
 
 findings  run the lenses over the files `git ls-files` lists in <dir>; one line per finding
+          (--code DIR: also check the code spans against the Rust files `git ls-files` lists in DIR)
 counts    the same run as counts per lens and kind only (no path, no text, no revision)
 sample    put one findings file's kinds in Gate B judging order for a seed (SPEC-STEP1 5.2)
 judge     keep a judge's verdict table: add a verdict, report the stop rule and second-judge agreement, print the blind sheet
@@ -95,15 +96,16 @@ fn project_name(dir: &Path, given: Option<String>) -> String {
 
 fn run_findings(args: &[String], counts: bool) -> Result<String, String> {
     let allowed: &[&str] = if counts {
-        &["--plan", "--project"]
+        &["--plan", "--project", "--code"]
     } else {
-        &["--plan", "--project", "--format"]
+        &["--plan", "--project", "--code", "--format"]
     };
     let a = parse(args, allowed)?;
     let dir = Path::new(a.single_positional("directory")?);
     let opts = Options {
         project: project_name(dir, a.one("--project")),
         plan: a.all("--plan"),
+        code: a.one("--code"),
     };
     let production = produce(dir, &opts).map_err(|e: ProduceError| e.to_string())?;
     if counts {
