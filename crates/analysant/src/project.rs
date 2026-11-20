@@ -9,6 +9,7 @@
 //! [corpus]
 //! aliases  = ["aliases.txt"]          # flat alias layer: `a | b | c`, first canonical
 //! concepts = ["senses.concepts"]      # concept layers with sense tables
+//! plan_files = ["ROADMAP.md"]         # tracked documents that are the plan, not the corpus
 //!
 //! [ownership]
 //! row_word        = "row"
@@ -29,6 +30,9 @@ use std::fmt;
 pub struct ProjectConfig {
     /// Alias files, relative to the project root.
     pub aliases: Vec<String>,
+    /// Plan documents (tracked files, relative to the project root): their lines are what the untasked check searches, and they are
+    /// not themselves part of the corpus.
+    pub plan: Vec<String>,
     /// Concept-layer files, relative to the project root, lowest precedence first.
     pub concepts: Vec<String>,
     /// `None` when the project declares no ownership convention (ownership is then not applied).
@@ -96,9 +100,10 @@ impl ProjectConfig {
         only_keys(&root, "the file", &["corpus", "ownership", "contradiction"])?;
         let mut cfg = Self::default();
         if let Some(t) = subtable(&root, "corpus")? {
-            only_keys(t, "[corpus]", &["aliases", "concepts"])?;
+            only_keys(t, "[corpus]", &["aliases", "concepts", "plan_files"])?;
             cfg.aliases = strings(t, "aliases", "[corpus]")?;
             cfg.concepts = strings(t, "concepts", "[corpus]")?;
+            cfg.plan = strings(t, "plan_files", "[corpus]")?;
         }
         if let Some(t) = subtable(&root, "ownership")? {
             only_keys(
@@ -131,13 +136,14 @@ mod tests {
     #[test]
     fn parses_every_table() {
         let c = ProjectConfig::parse(
-            "[corpus]\naliases = [\"a.txt\"]\nconcepts = [\"c1\", \"c2\"]\n\
+            "[corpus]\naliases = [\"a.txt\"]\nconcepts = [\"c1\", \"c2\"]\nplan_files = [\"P.md\"]\n\
              [ownership]\nrow_word = \"row\"\nrow_start = \". **\"\ncitation_prefix = \"n/\"\n\
              [contradiction]\npairing_stopwords = [\"acme\"]\n",
         )
         .expect("valid");
         assert_eq!(c.aliases, ["a.txt"]);
         assert_eq!(c.concepts, ["c1", "c2"]);
+        assert_eq!(c.plan, ["P.md"]);
         assert_eq!(c.pairing_stopwords, ["acme"]);
         let o = c.ownership.expect("ownership");
         assert_eq!(

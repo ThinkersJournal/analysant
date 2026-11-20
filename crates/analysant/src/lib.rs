@@ -10,6 +10,7 @@ pub mod identity;
 pub mod ledger_file;
 pub mod ownership;
 pub mod pragmatic;
+pub mod produce;
 pub mod project;
 pub mod tool;
 pub mod untasked;

@@ -2,7 +2,7 @@
 
 Status: **prep, 2026-11-20 (lane analysant).** The method is SPEC-STEP1 section 5.2; this file is the part a judge needs open while judging.
 The pass line is CireSnave's (D1) and is **not** set here; the strawman is 80% true on 30 judged per finding kind.
-The code is `analysant::gate_b` (`crates/analysant/src/gate_b.rs`); nothing in it judges a finding.
+The code is `analysant::gate_b` (`crates/analysant/src/gate_b.rs`); nothing in it judges a finding. The findings producer is the `analysant` binary (section 7).
 
 ## 1. Population (D2, PM ruling 2026-11-17)
 
@@ -94,3 +94,47 @@ cancellation pair). The README and the slice 4 spec paragraph name four classes 
 
 Expect those classes on the new projects. If one dominates a kind there, it becomes the next rule or table work; if tables cannot fix it, that
 is the evidence D6 waits on (no model until Gate B names such a class).
+
+## 7. Baseline runs: the procedure (written 2026-11-20; **nothing has been run on these three projects**)
+
+D1 is unanswered (board 469). Until CireSnave answers, **no run that could decide Gate B is made** on KISS, PersistAnt or
+HumboldtUnifiedKidTracker, and nothing is tuned on them. This section is the procedure a judge follows once he has. The producer is the
+`analysant` binary (`crates/analysant/src/bin/analysant.rs`, library `analysant::produce`); it has only been run on this repository and on
+its own test fixtures.
+
+A **no-config baseline** means: no `.analysant/project.toml`, so no alias table, no sense table, no ownership convention, no extra
+pairing stopwords. Whatever the lenses find with the pack's own data is the figure; a convention added afterwards is tuning.
+
+1. **Fix the tool.** Build `analysant` from a recorded revision (`git rev-parse HEAD` of this repo, crate version) and write both in the
+   report header. Do not rebuild between projects.
+2. **Fix each project's revision.** Use a **clean** clone at one recorded SHA (`git status` clean). The producer enumerates with
+   `git ls-files` only, so untracked files are never read, and it refuses a directory that is not a git work tree.
+3. **Check there is no project file.** `.analysant/project.toml` must not exist in the clone; if the project has one, the run is not a
+   baseline (note it, and run from an export without it). The header must say `# config: none (no-config baseline)`.
+4. **Choose the plan before looking.** The untasked check needs a plan (a tracked document whose lines say what is tasked). Name the
+   project's own roadmap or TODO file once, write the choice in the report, and pass it with `--plan <path>`. A project with none gets the
+   untasked lens "not analysed" (the header says so; that is a result, not a failure). The contradiction lens needs no plan and always runs.
+5. **Run it.** One line per project, with the names fixed in advance (`--project` is the name in the project column):
+   `analysant findings <clone> --project <name> --plan <plan path> > findings-<name>.tsv`
+   Check the header: `# revision:` equals the recorded SHA, `# worktree: clean`, `unreadable=0`, `# enumeration: git ls-files`.
+6. **Check it is deterministic.** Run it a second time and compare the two files byte for byte. A difference stops the procedure.
+7. **Aggregate counts.** `analysant counts <clone> --project <name> --plan <plan path>` prints counts per lens and kind and nothing else: no
+   path, no text, no id, no revision (those header lines read `withheld`). **For Humboldt this is the only output that may leave the
+   machine or appear in any report, issue, PR or message.** Its `findings-humboldt.tsv` stays local.
+8. **Sample per kind over the three projects.** Concatenate the data lines (not the `#` lines) of the three files into one file
+   (`grep -hv '^#' findings-*.tsv > all.tsv`), then `analysant sample all.tsv --seed <S> --kind <lens>/<kind>`. The seed is chosen once, written
+   in the report header, and **not reused after a tuning round**. The output is that kind in judging order, numbered from 1, each row being
+   the whole finding line (so the judge has the text); `reading=census` means fewer than 30 findings and the whole kind is read. Findings at
+   the same `(project, file, line)` are ordered by id, so the order does not depend on how the file listed them.
+9. **Judge** per sections 3 and 4 of this file: read in order, write a verdict and a reason per row, stop at 30 judged or at the false-positive
+   count for the pass line (`analysant::gate_b::stop_state`). The producer records no verdicts and tracks no stop rule; the judge keeps the
+   table (section 5). Humboldt's rows are judged on the local machine and appear in the report as counts only.
+10. **Second judge: the CodeRipper lane** (PM decision 2026-11-20, reversible). It re-judges the 10 of 30 chosen by
+    `analysant::gate_b::second_judge_selection(judged, seed)` blind (verdict and reason hidden). It reads Humboldt rows only on the machine
+    that holds the clone. The agreement threshold that voids a figure is D1's and unset.
+11. **After any tuning** (a new alias, sense or rule written because of what was seen), the sample is spent: choose a fresh seed and
+    projects not seen while tuning (section 4), and say in the report which round this is.
+
+What the producer does **not** do: capture verdicts, track the stop rule, choose the plan, or tune anything. A finding's `search` and `control`
+columns are what the lens recorded (the untasked check's search record and SelfFind control); contradiction pairs record neither (a pair is
+not an absence), so those columns read `-` for them.
