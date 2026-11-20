@@ -593,7 +593,7 @@ a ref). Adopted as written, with the changes noted:
   driving Fisher-Yates, seed fixed in the report). CodeRipper's shuffle is Python's `random.Random(2026)` (`:34`), which a Rust tool cannot
   reproduce bit-for-bit; the algorithm is therefore written into this spec and tested with fixed vectors.
 - **Stop rule:** judge until **30 judged, or until the pass line is unreachable**, whichever is first. With pass line *p* the stop is
-  `floor(30 * (1 - p)) + 1` false positives (CodeRipper's 80% bar: the 7th false positive, `:36-37`). A kind with fewer than 30 findings is a
+  `floor(30 * (1 - p)) + 1` false positives (at 80% that is the 7th false positive; arithmetic, `:36-37` of the plan above applies it to its own 80% gate, which was set for that plan's candidate performance rules, not a standing CodeRipper bar). A kind with fewer than 30 findings is a
   **census**, read whole, and cannot satisfy the "30 sampled" clause (`:36`).
 - **Rubric (draft; the finding must be judged against the sources at the finding's own revisions):**
   - TRUE: the discrepancy or absence it states is real at the stated revisions **and** a reader acting on it fixes or learns something
@@ -612,8 +612,8 @@ a ref). Adopted as written, with the changes noted:
 - **Tuning discipline:** a rule tuned on a sample invalidates that sample; the re-measure uses a **fresh** sample (different seed, and
   projects not seen during tuning). Without this the gate measures the tuner, not the tool.
 
-**The pass line is CireSnave's** (D1). **PROPOSAL (strawman only):** 80% true on at least 30 judged per reported finding kind, which is what
-CodeRipper holds; a kind below the line is **not shown in `health_report`** (it can still be run and inspected) rather than shown with a
+**The pass line is CireSnave's** (D1). **PROPOSAL (strawman only):** 80% true on at least 30 judged per reported finding kind, the gate the CodeRipper performance-rules plan set for its own candidate rules (`2026-10-24-performance-rules-precision.md:4`, from `2026-10-23-performance-rules.md` section 7); CodeRipper has no standing precision bar (its lane, 2026-11-20). The 80% is this proposal's own, on the stop-at-7th-false-positive arithmetic; a kind below the line
+is **not shown in `health_report`** (it can still be run and inspected) rather than shown with a
 warning, because the false-confidence risk is that a presented finding is believed.
 
 ### 5.3 Gate C: kill / continue (for CireSnave to set)
