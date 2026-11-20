@@ -127,14 +127,25 @@ pairing stopwords. Whatever the lenses find with the pack's own data is the figu
    the whole finding line (so the judge has the text); `reading=census` means fewer than 30 findings and the whole kind is read. Findings at
    the same `(project, file, line)` are ordered by id, so the order does not depend on how the file listed them.
 9. **Judge** per sections 3 and 4 of this file: read in order, write a verdict and a reason per row, stop at 30 judged or at the false-positive
-   count for the pass line (`analysant::gate_b::stop_state`). The producer records no verdicts and tracks no stop rule; the judge keeps the
-   table (section 5). Humboldt's rows are judged on the local machine and appear in the report as counts only.
+   count for the pass line (`analysant::gate_b::stop_state`). The judge decides every verdict; the tool keeps the table and the stop rule:
+   `analysant judge append verdicts.tsv --id <finding id> --verdict TRUE|FALSE|UNJUDGEABLE [--class <noise class>] --reason <why> --judge <you>`
+   writes one line (a FALSE verdict needs a named class, a TRUE or UNJUDGEABLE one has none, every verdict has a reason; one judge cannot
+   judge one finding twice, and a second judge's verdict on the same id is a second line, never an overwrite). Findings are judged in the
+   sample's order: a verdict after a gap is refused by `report`. `analysant judge report sample.tsv verdicts.tsv --judge <you>
+   --pass-percent <P>` prints, per kind, findings, census or sample, judged, true, false, unjudgeable, precision, the rule-of-three upper
+   bound when true is 0, the stop reason, how many verdicts lie beyond the stop point (kept, not counted), the next position, whether the 30
+   clause is met and whether the kind clears the line, with the named noise classes below. **UNJUDGEABLE counts as false** for the stop and
+   the figure. The pass line is a required argument with no default. Humboldt's rows are judged on the local machine and appear in the
+   report as counts only (`verdicts.tsv` for Humboldt stays local, as its findings do).
 10. **Second judge: the CodeRipper lane** (PM decision 2026-11-20, reversible). It re-judges the 10 of 30 chosen by
-    `analysant::gate_b::second_judge_selection(judged, seed)` blind (verdict and reason hidden). It reads Humboldt rows only on the machine
-    that holds the clone. The agreement threshold that voids a figure is D1's and unset.
+    `analysant::gate_b::second_judge_selection(judged, seed)` blind (verdict and reason hidden): `analysant judge sheet sample.tsv
+    verdicts.tsv --judge <first judge> --pass-percent <P> --kind <lens/kind>` prints exactly those findings with their positions and no
+    verdict. The second judge's lines go in the same table under their own name, and `report ... --second <their name>` gives the agreement
+    as `k of n`. It reads Humboldt rows only on the machine that holds the clone. The threshold that voids a figure is D1's and unset: give
+    it as `--void-below K` once he sets it; until then the report says `threshold not set` beside the number and voids nothing.
 11. **After any tuning** (a new alias, sense or rule written because of what was seen), the sample is spent: choose a fresh seed and
     projects not seen while tuning (section 4), and say in the report which round this is.
 
-What the producer does **not** do: capture verdicts, track the stop rule, choose the plan, or tune anything. A finding's `search` and `control`
+What the tool does **not** do: judge anything, choose the plan, or tune anything. A finding's `search` and `control`
 columns are what the lens recorded (the untasked check's search record and SelfFind control); contradiction pairs record neither (a pair is
 not an absence), so those columns read `-` for them.

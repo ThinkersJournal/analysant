@@ -6,9 +6,16 @@
 //! analysant findings <dir> [--plan PATH]... [--project NAME] [--format tsv|jsonl]
 //! analysant counts   <dir> [--plan PATH]... [--project NAME]
 //! analysant sample   <findings-file> --seed N [--kind LENS/KIND]
+//! analysant judge report <sample-file> <verdicts-file> --judge J --pass-percent P [--second J2] [--void-below K]
+//! analysant judge append <verdicts-file> --id ID --verdict V [--class C] --reason R --judge J
+//! analysant judge sheet  <sample-file> <verdicts-file> --judge J --pass-percent P --kind LENS/KIND
 //! ```
 
 use analysant::gate_b::{Reading, reading};
+use analysant::judging::{
+    Entry, KindOrder, NO_CLASS, Params, Verdict, VerdictTable, parse_judging, render_report,
+    report_all, second_judge_sheet,
+};
 use analysant::produce::{Options, ProduceError, judging_rows, parse_findings, produce};
 use std::collections::BTreeMap;
 use std::io::Write;
@@ -19,11 +26,16 @@ const USAGE: &str = "usage:
   analysant findings <dir> [--plan PATH]... [--project NAME] [--format tsv|jsonl]
   analysant counts   <dir> [--plan PATH]... [--project NAME]
   analysant sample   <findings-file> --seed N [--kind LENS/KIND]
+  analysant judge report <sample-file> <verdicts-file> --judge J --pass-percent P [--second J2] [--void-below K]
+  analysant judge append <verdicts-file> --id ID --verdict TRUE|FALSE|UNJUDGEABLE [--class C] --reason R --judge J
+  analysant judge sheet  <sample-file> <verdicts-file> --judge J --pass-percent P --kind LENS/KIND
   analysant --help
 
 findings  run the lenses over the files `git ls-files` lists in <dir>; one line per finding
 counts    the same run as counts per lens and kind only (no path, no text, no revision)
-sample    put one findings file's kinds in Gate B judging order for a seed (SPEC-STEP1 5.2)";
+sample    put one findings file's kinds in Gate B judging order for a seed (SPEC-STEP1 5.2)
+judge     keep a judge's verdict table: add a verdict, report the stop rule and second-judge agreement, print the blind sheet
+          (the pass line is always given; the agreement threshold is D1's and has no default)";
 
 /// Parsed arguments: positionals, and flags with their values.
 struct Args {
@@ -153,6 +165,132 @@ fn run_sample(args: &[String]) -> Result<String, String> {
     Ok(out.join("\n") + "\n")
 }
 
+/// A required flag's value, or the error naming the flag.
+fn required(a: &Args, flag: &str) -> Result<String, String> {
+    a.one(flag)
+        .ok_or_else(|| format!("{flag} is required\n{USAGE}"))
+}
+
+fn pass_percent(a: &Args) -> Result<u32, String> {
+    let given = required(a, "--pass-percent")?;
+    given
+        .parse::<u32>()
+        .ok()
+        .filter(|p| *p <= 100)
+        .ok_or_else(|| format!("--pass-percent is a whole percentage up to 100, got {given}"))
+}
+
+fn read_text(path: &str) -> Result<String, String> {
+    std::fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))
+}
+
+fn run_judge(args: &[String]) -> Result<String, String> {
+    let (action, rest) = args
+        .split_first()
+        .ok_or_else(|| format!("judge needs an action\n{USAGE}"))?;
+    match action.as_str() {
+        "report" => judge_report(rest),
+        "append" => judge_append(rest),
+        "sheet" => judge_sheet(rest),
+        other => Err(format!("unknown judge action {other}\n{USAGE}")),
+    }
+}
+
+fn judge_inputs(a: &Args) -> Result<(Vec<KindOrder>, VerdictTable), String> {
+    let [sample, verdicts] = a.positional.as_slice() else {
+        return Err(format!(
+            "expected a sample file and a verdicts file\n{USAGE}"
+        ));
+    };
+    let orders = parse_judging(&read_text(sample)?).map_err(|e| e.to_string())?;
+    let table = if std::path::Path::new(verdicts).exists() {
+        VerdictTable::parse(&read_text(verdicts)?).map_err(|e| e.to_string())?
+    } else {
+        VerdictTable::new()
+    };
+    Ok((orders, table))
+}
+
+fn judge_report(args: &[String]) -> Result<String, String> {
+    let a = parse(
+        args,
+        &["--judge", "--second", "--pass-percent", "--void-below"],
+    )?;
+    let judge = required(&a, "--judge")?;
+    let second = a.one("--second");
+    let void_below = match a.one("--void-below") {
+        Some(v) => Some(
+            v.parse::<usize>()
+                .map_err(|_| format!("--void-below must be a number, got {v}"))?,
+        ),
+        None => None,
+    };
+    let params = Params {
+        judge: &judge,
+        second_judge: second.as_deref(),
+        pass_percent: pass_percent(&a)?,
+        void_below,
+    };
+    let (orders, table) = judge_inputs(&a)?;
+    let reports = report_all(&orders, &table, &params).map_err(|e| e.to_string())?;
+    Ok(render_report(&reports, &params))
+}
+
+fn judge_append(args: &[String]) -> Result<String, String> {
+    let a = parse(
+        args,
+        &["--id", "--verdict", "--class", "--reason", "--judge"],
+    )?;
+    let path = a.single_positional("verdicts file")?;
+    let word = required(&a, "--verdict")?;
+    let Some(verdict) = Verdict::from_word(&word) else {
+        return Err(format!(
+            "--verdict is TRUE, FALSE or UNJUDGEABLE, got {word}"
+        ));
+    };
+    let entry = Entry {
+        id: required(&a, "--id")?,
+        verdict,
+        class: a.one("--class").unwrap_or_else(|| NO_CLASS.to_string()),
+        reason: required(&a, "--reason")?,
+        judge: required(&a, "--judge")?,
+    };
+    let mut table = if std::path::Path::new(path).exists() {
+        VerdictTable::parse(&read_text(path)?).map_err(|e| e.to_string())?
+    } else {
+        VerdictTable::new()
+    };
+    table.add(entry).map_err(|e| e.to_string())?;
+    std::fs::write(path, table.render()).map_err(|e| format!("cannot write {path}: {e}"))?;
+    Ok(String::new())
+}
+
+fn judge_sheet(args: &[String]) -> Result<String, String> {
+    let a = parse(args, &["--judge", "--pass-percent", "--kind"])?;
+    let judge = required(&a, "--judge")?;
+    let kind = required(&a, "--kind")?;
+    let params = Params {
+        judge: &judge,
+        second_judge: None,
+        pass_percent: pass_percent(&a)?,
+        void_below: None,
+    };
+    let (orders, table) = judge_inputs(&a)?;
+    let Some(order) = orders.iter().find(|o| o.kind == kind) else {
+        return Err(format!("the sample file has no kind {kind}"));
+    };
+    let sheet = second_judge_sheet(order, &table, &params).map_err(|e| e.to_string())?;
+    let mut out = format!(
+        "# analysant-second-judge-sheet v1\n# kind {kind}: seed={} items={}\n",
+        order.seed,
+        sheet.len()
+    );
+    for (position, row) in sheet {
+        out += &format!("{position}\t{}\n", row.line());
+    }
+    Ok(out)
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
@@ -163,6 +301,7 @@ fn main() -> ExitCode {
         Some("findings") => run_findings(&args[1..], false),
         Some("counts") => run_findings(&args[1..], true),
         Some("sample") => run_sample(&args[1..]),
+        Some("judge") => run_judge(&args[1..]),
         _ => Err(USAGE.to_string()),
     };
     match result {
