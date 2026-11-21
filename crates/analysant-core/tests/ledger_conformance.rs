@@ -6,7 +6,7 @@
 
 #![allow(dead_code)]
 
-use analysant::ledger_file::{
+use analysant_core::ledger_file::{
     LedgerFileError, UnitKindName, build, history, merge_text, parse, render, state,
 };
 use analysant_core::{UnitId, UnitKind, content_id};
@@ -15,6 +15,79 @@ use analysant_core::{UnitId, UnitKind, content_id};
 mod writer;
 
 const CANONICAL: &str = include_str!("fixtures/ledger-conformance/canonical.jsonl");
+const ESCAPING: &str = include_str!("fixtures/ledger-conformance/escaping.jsonl");
+
+/// G7: the second golden file. Non-ASCII, quote, backslash, `/`, tab, newline, U+001F, U+007F, U+2028
+/// and an astral character, in the text, the section path and the document path.
+#[test]
+fn the_escaping_golden_is_what_the_reference_writer_writes_and_survives_a_round_trip() {
+    assert_eq!(writer::escaping(), ESCAPING);
+    let events = parse(ESCAPING).unwrap();
+    assert_eq!(render(&events), ESCAPING);
+    // Raw, not escaped: non-ASCII, `/`, U+007F and U+2028 appear as themselves in the file.
+    for raw in [
+        "Caf\u{e9}",
+        "\u{65e5}\u{672c}",
+        "1/2",
+        "\u{7f}",
+        "\u{2028}",
+        "\u{1f600}",
+    ] {
+        assert!(ESCAPING.contains(raw), "{raw:?} must be written raw");
+    }
+    // Escaped: the short forms and \u001f (lower-case hex), never \u000a or \u0009.
+    for esc in ["\\t", "\\n", "\\\"", "\\\\", "\\u001f"] {
+        assert!(ESCAPING.contains(esc), "{esc} must be written as an escape");
+    }
+    assert!(!ESCAPING.contains("\\u000a") && !ESCAPING.contains("\\u0009"));
+}
+
+/// G7: a reader takes any valid JSON escaping and normalises it on the next write.
+#[test]
+fn a_reader_accepts_other_valid_escapings_and_rewrites_them_canonically() {
+    let other = ESCAPING
+        .replace("Caf\u{e9}", "Caf\\u00e9")
+        .replace("1/2", "1\\/2");
+    assert_ne!(other, ESCAPING);
+    assert_eq!(render(&parse(&other).unwrap()), ESCAPING);
+}
+
+/// G9: CRLF line ends (Windows autocrlf) are read; a write always uses LF.
+#[test]
+fn crlf_line_endings_are_read_and_a_write_is_lf() {
+    let crlf = CANONICAL.replace('\n', "\r\n");
+    assert_eq!(render(&parse(&crlf).unwrap()), CANONICAL);
+    assert_eq!(merge_text(&crlf, CANONICAL).unwrap().text, CANONICAL);
+}
+
+/// G4: revision numbers. `minted` is revision 1; only `revised` raises it, to the unit's latest
+/// revision plus one; `moved` and `gone` carry the revision the unit has when they are written.
+#[test]
+fn the_golden_file_obeys_the_revision_rules() {
+    use analysant_core::ledger_file::Event;
+    let events = parse(CANONICAL).unwrap();
+    let mut latest: std::collections::BTreeMap<String, u32> = Default::default();
+    for ev in &events {
+        let unit = ev.unit_text().to_string();
+        match ev {
+            Event::Minted { revision, .. } => {
+                assert_eq!(*revision, 1);
+                latest.insert(unit, 1);
+            }
+            Event::Revised { revision, .. } => {
+                let cur = latest.get_mut(&unit).unwrap();
+                assert_eq!(*revision, *cur + 1, "revised = latest + 1");
+                *cur = *revision;
+            }
+            Event::Moved { revision, .. } | Event::Gone { revision, .. } => {
+                assert_eq!(
+                    *revision, latest[&unit],
+                    "moved/gone carry the current revision"
+                );
+            }
+        }
+    }
+}
 
 #[test]
 fn the_reference_writer_reproduces_the_golden_file_byte_for_byte() {

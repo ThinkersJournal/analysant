@@ -1,2 +1,2 @@
 # Byte-exact golden file: never converted to CRLF (the conformance test compares bytes).
-crates/analysant/tests/fixtures/ledger-conformance/*.jsonl text eol=lf
+crates/analysant-core/tests/fixtures/ledger-conformance/*.jsonl text eol=lf
