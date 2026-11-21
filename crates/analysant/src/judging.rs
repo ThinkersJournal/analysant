@@ -329,6 +329,16 @@ pub struct Params<'a> {
     pub pass_percent: u32,
     /// Agreement below this many of the selected items voids the figure (D1); `None` while it is unset.
     pub void_below: Option<usize>,
+    /// For a kind that stopped before 10 items could be selected (pm-ants ruling 2026-11-21): the figure holds when at least this
+    /// whole percent of the selected items agree and at least this many were judged; `None` means `void_below` alone decides.
+    pub stopped_rule: Option<StoppedRule>,
+}
+
+/// The agreement rule for a stopped kind: `percent` of the selected items must agree, and at least `min_judged` must exist.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StoppedRule {
+    pub percent: u32,
+    pub min_judged: usize,
 }
 
 /// What the second judge's answers say about the first judge's figure.
@@ -534,10 +544,18 @@ fn second_judge_agreement(
     let status = if answered < chosen.len() {
         AgreementStatus::Incomplete
     } else {
-        match params.void_below {
-            None => AgreementStatus::ThresholdUnset,
-            Some(t) if agree < t => AgreementStatus::Voided,
-            Some(_) => AgreementStatus::Holds,
+        match (params.stopped_rule, params.void_below) {
+            (Some(r), _) if chosen.len() < crate::gate_b::SECOND_JUDGE_COUNT => {
+                if chosen.len() >= r.min_judged && agree * 100 >= r.percent as usize * chosen.len()
+                {
+                    AgreementStatus::Holds
+                } else {
+                    AgreementStatus::Voided
+                }
+            }
+            (_, None) => AgreementStatus::ThresholdUnset,
+            (_, Some(t)) if agree < t => AgreementStatus::Voided,
+            (_, Some(_)) => AgreementStatus::Holds,
         }
     };
     Some(Agreement {

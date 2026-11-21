@@ -617,7 +617,9 @@ a ref). Adopted as written, with the changes noted:
 **PINNED (D1 answered by CireSnave 2026-11-21, relayed by the PM via pm-ants; his words: "469: A1.  B: 80%.  C: cap 30 lane-days and notify me if we reach that cap."):**
 the pass line is **80% true over 30 judged per finding kind**, stop at the 7th false positive, fewer than 30 findings is a census and cannot pass;
 a **second judge (a CodeRipper lane) re-judges a blind 10 of the 30, and agreement below 8 of 10 voids the figure**. This overrides the "threshold"
-left open in the second-judge bullet above. Humboldt stays aggregate counts only in public text.
+left open in the second-judge bullet above. **PM-accepted 2026-11-21 (pm-ants ruling): for a kind that stopped before 10 items could be
+selected, the second judge re-judges every judged item blind and the figure holds when at least 80% of them agree and at least 5 were judged**
+(Gate B run 1 used it: 7 of 7 per kind). `analysant judge report --stopped-agree-percent 80 --stopped-min-judged 5`. Humboldt stays aggregate counts only in public text.
 **Original proposal, now adopted:** 80% true on at least 30 judged per reported finding kind, the gate the CodeRipper performance-rules plan set for its own candidate rules (`2026-10-24-performance-rules-precision.md:4`, from `2026-10-23-performance-rules.md` section 7); CodeRipper has no standing precision bar (its lane, 2026-11-20). The 80% is this proposal's own, on the stop-at-7th-false-positive arithmetic; a kind below the line
 is **not shown in `health_report`** (it can still be run and inspected) rather than shown with a
 warning, because the false-confidence risk is that a presented finding is believed.

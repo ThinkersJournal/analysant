@@ -97,7 +97,8 @@ is the evidence D6 waits on (no model until Gate B names such a class).
 
 ## 7. Baseline runs: the procedure (written 2026-11-20; run 1 made 2026-11-21, seed 20261121)
 
-D1 was answered 2026-11-21. Nothing is tuned on these projects without spending the sample (step 11). **Judging key:** a finding id is a content id, so
+D1 was answered 2026-11-21. Nothing is tuned on these projects without spending the sample (step 11). **Stopped kind (PM-accepted 2026-11-21):** if a kind stops before 10 can be selected, the second judge re-judges all judged items blind; the figure holds at 80% agreement of the judged and at least 5 judged: `report ... --void-below 8 --stopped-agree-percent 80 --stopped-min-judged 5`. Run 1: 7 of 7 per kind, both held.
+**Judging key:** a finding id is a content id, so
 one boilerplate claim in three projects has one id; judging rows are keyed `<project>:<id>`, and `judge append --id` takes that form. The producer is the
 `analysant` binary (`crates/analysant/src/bin/analysant.rs`, library `analysant::produce`); it has only been run on this repository and on
 its own test fixtures.

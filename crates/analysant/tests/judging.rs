@@ -76,6 +76,7 @@ fn params(judge: &str) -> Params<'_> {
         second_judge: None,
         pass_percent: 80,
         void_below: None,
+        stopped_rule: None,
     }
 }
 
@@ -229,6 +230,7 @@ fn agreement_eight_of_ten_holds_and_seven_of_ten_voids_under_a_threshold_of_eigh
     let p = Params {
         second_judge: Some("j2"),
         void_below: Some(8),
+        stopped_rule: None,
         ..params("j1")
     };
     let (o8, t8) = with_second(2);
@@ -250,6 +252,7 @@ fn without_a_threshold_the_number_is_reported_and_nothing_is_voided() {
     let p = Params {
         second_judge: Some("j2"),
         void_below: None,
+        stopped_rule: None,
         ..params("j1")
     };
     let (o, t) = with_second(3);
@@ -265,6 +268,7 @@ fn an_unanswered_selected_item_makes_the_agreement_incomplete() {
     let p = Params {
         second_judge: Some("j2"),
         void_below: Some(8),
+        stopped_rule: None,
         ..params("j1")
     };
     let (o, t) = with_second(0);
@@ -620,4 +624,38 @@ fn the_same_content_id_in_two_projects_is_two_findings() {
     let kinds = parse_judging(&text).expect("two projects, one id, is not a duplicate");
     assert_eq!(kinds[0].rows[0].id, "alpha:f-0001");
     assert_eq!(kinds[0].rows[1].id, "beta:f-0001");
+}
+
+/// pm-ants ruling 2026-11-21: a kind that stopped at 7 judged is held by 7 of 7 agreement, not voided by an 8-of-10 threshold.
+#[test]
+fn a_stopped_kind_uses_the_percent_rule_not_eight_of_ten() {
+    let kinds = order(7);
+    let first: Vec<_> = (1..=7).map(|p| (p, Verdict::False)).collect();
+    let mut t = table(&first, "j1");
+    for (p, v) in &first {
+        t.add(entry(*p, *v, "j2")).unwrap();
+    }
+    let mk = |rule| Params {
+        judge: "j1",
+        second_judge: Some("j2"),
+        pass_percent: 80,
+        void_below: Some(8),
+        stopped_rule: rule,
+    };
+    let status = |p: &Params<'_>| {
+        report_all(&kinds, &t, p).unwrap()[0]
+            .agreement
+            .as_ref()
+            .unwrap()
+            .status
+    };
+    assert_eq!(status(&mk(None)), AgreementStatus::Voided);
+    let rule = |percent, min_judged| {
+        Some(analysant::judging::StoppedRule {
+            percent,
+            min_judged,
+        })
+    };
+    assert_eq!(status(&mk(rule(80, 5))), AgreementStatus::Holds);
+    assert_eq!(status(&mk(rule(80, 8))), AgreementStatus::Voided);
 }
