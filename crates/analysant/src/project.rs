@@ -47,6 +47,8 @@ pub struct ProjectConfig {
     /// `[untasked] skip_names = true`: the untasked check sets aside Name-kind claims (bare identifiers, labels, crate names), which state no
     /// work. Off by default: the Gate A oracle runs (v4, v5) include Name-claim findings; this is a Gate B tuning option.
     pub untasked_skip_names: bool,
+    /// `[contradiction] skip_names = true`: Name-kind claims are not statements the contradiction lens pairs. Off by default (Gate A).
+    pub contradiction_skip_names: bool,
 }
 
 /// A project file that could not be read as configuration.
@@ -135,8 +137,15 @@ impl ProjectConfig {
             });
         }
         if let Some(t) = subtable(&root, "contradiction")? {
-            only_keys(t, "[contradiction]", &["pairing_stopwords"])?;
+            only_keys(t, "[contradiction]", &["pairing_stopwords", "skip_names"])?;
             cfg.pairing_stopwords = strings(t, "pairing_stopwords", "[contradiction]")?;
+            cfg.contradiction_skip_names = match t.get("skip_names") {
+                Some(v) => match v.as_bool() {
+                    Some(b) => b,
+                    None => return err("`skip_names` in [contradiction] must be true or false"),
+                },
+                None => false,
+            };
         }
         if let Some(t) = subtable(&root, "untasked")? {
             only_keys(t, "[untasked]", &["skip_names"])?;
@@ -164,6 +173,28 @@ impl ProjectConfig {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn contradiction_skip_names_is_off_by_default_and_must_be_a_bool() {
+        assert!(!ProjectConfig::parse("").unwrap().contradiction_skip_names);
+        assert!(
+            ProjectConfig::parse(
+                "[contradiction]
+skip_names = true
+"
+            )
+            .unwrap()
+            .contradiction_skip_names
+        );
+        assert!(
+            ProjectConfig::parse(
+                "[contradiction]
+skip_names = 1
+"
+            )
+            .is_err()
+        );
+    }
+
     #[test]
     fn untasked_skip_names_is_off_by_default_and_must_be_a_bool() {
         assert!(!ProjectConfig::parse("").unwrap().untasked_skip_names);

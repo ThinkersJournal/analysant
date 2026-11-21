@@ -128,6 +128,7 @@ fn lens(en: &English) -> ContradictionLens<'_> {
         en,
         Config {
             extra_pairing_stopwords: project().pairing_stopwords,
+            ..Config::default()
         },
     )
     .expect("en carries the data")
