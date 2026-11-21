@@ -314,12 +314,13 @@ pub fn produce(root: &Path, opts: &Options) -> Result<Production, ProduceError> 
     let untasked_status = if plan_lines.is_empty() {
         LensStatus::NotAnalysed("no plan given: use --plan or [corpus] plan_files".into())
     } else {
-        let run: UntaskedRun = untasked::directed_but_untasked(
+        let run: UntaskedRun = untasked::directed_but_untasked_with(
             &en,
             &corpus,
             &plan_lines,
             &aliases,
             MatchMode::TokenSubset,
+            config.untasked_skip_names,
         );
         let owners: Owners = match &config.ownership {
             Some(cfg) => crate::ownership::owners(&Markdown, &en, cfg, &plan_lines, &files),
