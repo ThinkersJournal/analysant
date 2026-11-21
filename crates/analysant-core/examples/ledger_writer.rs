@@ -6,16 +6,57 @@
 //!
 //! Run: `cargo run -p analysant-core --example ledger_writer`
 
-use analysant_core::ledger_file::{UnitKindName, build, render};
+use analysant_core::identity::{IdentityParams, observations, reidentify};
+use analysant_core::ledger_file::{Event, UnitKindName, build, render, state};
+use analysant_core::{English, Ledger, Markdown, extract_document};
 use analysant_core::{UnitKind, content_id};
 
 fn main() {
-    // `ledger_writer` prints the canonical file; `ledger_writer escaping` prints the escaping file.
-    if std::env::args().nth(1).as_deref() == Some("escaping") {
-        print!("{}", escaping());
-    } else {
-        print!("{}", canonical());
+    // `ledger_writer` prints the canonical file; `ledger_writer escaping` prints the escaping file;
+    // `ledger_writer rewrite` prints the delete-then-rewrite file.
+    match std::env::args().nth(1).as_deref() {
+        Some("escaping") => print!("{}", escaping()),
+        Some("rewrite") => print!("{}", rewrite()),
+        _ => print!("{}", canonical()),
     }
+}
+
+/// One writer cycle for one document, the way a writing tool does it: extract with a throwaway
+/// `Ledger::default()` (only the texts and section paths of the claims are used, never
+/// `claim.unit.id`), align that to the file's state with `reidentify`, and append the events it
+/// proposes. `reidentify` mints a new unit's id with the right `generation` from the file's state, so
+/// a sentence deleted and written again gets a new id and an id is never reused.
+fn cycle(events: &mut Vec<Event>, document: &str, markdown: &str) {
+    let pack = English::new();
+    let doc = extract_document(&Markdown, &pack, &mut Ledger::default(), document, markdown);
+    let observed = observations(&pack, &doc);
+    let prior = state(events).expect("the file reads");
+    let params = IdentityParams {
+        edit_similarity_permille: 600,
+    };
+    let proposal = reidentify(&pack, document, &prior, &observed, params);
+    events.extend(proposal.events);
+}
+
+/// The rewrite file: a claim is written, deleted (`gone`), then written again (a new id, generation 1).
+pub fn rewrite() -> String {
+    let mut events = Vec::new();
+    cycle(
+        &mut events,
+        "a.md",
+        "# Plan\n\n- The intake service validates every request.\n- The queue drains in arrival order.\n",
+    );
+    cycle(
+        &mut events,
+        "a.md",
+        "# Plan\n\n- The queue drains in arrival order.\n",
+    );
+    cycle(
+        &mut events,
+        "a.md",
+        "# Plan\n\n- The intake service validates every request.\n- The queue drains in arrival order.\n",
+    );
+    render(&events)
 }
 
 /// The escaping file: one claim whose text and path carry every character JSON writes specially,

@@ -3,16 +3,18 @@
 analysant reads and merges `.analysant/ledger.jsonl`; a writing tool produces it. This is what a writer
 must get exactly right, and how to check it. Everything a writer needs is in `analysant-core` (the
 `analysant` crate re-exports it, so both paths work): `ledger_file` (format, `build`, `render`, `parse`,
-`merge_text`, `state`, `history`), `corpus::extract_document`, `Ledger`, `content_id`, `Markdown`, `English`.
+`merge_text`, `state`, `history`), `corpus::extract_document`, `identity::reidentify`, `Ledger`, `content_id`, `Markdown`, `English`.
 
 **The kit** (all under `crates/analysant-core`)
 - `tests/fixtures/ledger-conformance/canonical.jsonl`: the golden file (header; one claim minted, reworded, moved and
   removed; a second claim that stays).
 - `tests/fixtures/ledger-conformance/escaping.jsonl`: the second golden file (non-ASCII, quote, backslash, `/`, tab,
   newline, U+001F, U+007F, U+2028, an astral character; in text, section path and document path).
-- `examples/ledger_writer.rs`: a reference writer; `cargo run -p analysant-core --example ledger_writer [escaping]`
-  prints either file byte for byte.
-- `tests/ledger_conformance.rs` (11 tests) and `tests/ledger_extraction.rs` (2 tests): see below.
+- `tests/fixtures/ledger-conformance/rewrite.jsonl`: the third golden file (a claim written, deleted, written again: the
+  re-written one has a new id, generation 1), produced through `extract_document` + `reidentify`, the way a writer works.
+- `examples/ledger_writer.rs`: a reference writer; `cargo run -p analysant-core --example ledger_writer [escaping|rewrite]`
+  prints any of the three files byte for byte.
+- `tests/ledger_conformance.rs` (12 tests) and `tests/ledger_extraction.rs` (2 tests): see below.
 - `tests/fixtures/ledger-conformance/check_ledger.py`: an independent Python check of rules 5 and 6 (and of the text hash)
   for any ledger file: `python -I check_ledger.py FILE.jsonl`. It passes on both golden files.
 
@@ -49,16 +51,29 @@ must get exactly right, and how to check it. Everything a writer needs is in `an
    &mut Ledger::default(), path, text)`: `claim.text` and `doc.section_path(claim)` are exactly what an event records, and
    `occurrence` follows from the order of identical claims in that one pass. A writer never segments sentences or normalises
    headings itself. `path` is the one `git ls-files` prints: relative to the project root, `/` separators, git's case; a
-   different spelling is a different document (`ledger_extraction.rs`). What the extractor does today, pinned in
-   `ledger_extraction.rs`, limits included: a closing `#` of an ATX heading stays (`# Top Title #` is `Top Title #`), a setext
-   heading (`Title` over `=====`) is not a heading, inline markup stays, and no Unicode normalisation is applied. A change to
-   any of these changes ids and fails that test first.
+   different spelling is a different document (`ledger_extraction.rs`). **Never record `claim.unit.id` from this call**: with a
+   throwaway `Ledger::default()` it is generation 0 and knows nothing of the file; ids come from `reidentify` (rule 10).
+   **The extractor is the authority for ledger paths**, not CommonMark. What it does today, pinned in `ledger_extraction.rs`,
+   limits included: a closing `#` of an ATX heading stays (`# Top Title #` is `Top Title #`), a setext heading (`Title` over
+   `=====`) is not a heading, inline markup stays, and no Unicode normalisation is applied. So a ledger path can differ from
+   what a CommonMark reader calls the heading, and a renamed or moved setext section yields no `moved` events (its claims
+   stay under the enclosing ATX heading). Changing any of this changes ids and paths: it is a `LEDGER_FORMAT_VERSION` bump,
+   and `ledger_extraction.rs` fails first. EditAnt records the divergence as an open item; it is not resolved here.
 8. **Revisions.** `minted` is revision 1. Only `revised` raises it, to the unit's latest revision plus one. `moved` and
    `gone` carry the revision the unit has when they are written (the golden: minted 1, revised 2, moved 2, gone 2). An edit
    plan's `expect_rev` (SPEC 1.8) is compared with the unit's latest revision in the file's state, and a mismatch is
    refused. Readers do not enforce this rule; `the_golden_file_obeys_the_revision_rules` shows the shape.
 9. **A section rename or move** is one `moved` event per claim under that section, descendants included, each with the claim's
    new full section path. Sections are not units in the ledger (only claims are recorded so far), so there is no section event.
+
+10. **Identity across edits is `identity::reidentify`, in `analysant-core`.** A writer calls it (do not decide `revised`, `moved`
+   and `gone` from scratch, and do not mint ids yourself): `observations(&pack, &doc)` from the extraction,
+   `state(&events)` for the file's prior state, `reidentify(&pack, document, &prior, &observed, params)`; append the events it
+   proposes. It mints new units with `content_id(.., occurrence, generation)` where `generation` comes from the file's state,
+   so a deleted-then-rewritten sentence gets a new id (`rewrite.jsonl`); where it cannot decide (identical sentences added or
+   removed) it proposes nothing and reports an ambiguity for a human or an edit operation to settle. An edit the writer
+   itself makes (it knows exactly what changed) may append `revised`, `moved` or `gone` directly under rule 8, with
+   `build::*`. `params.edit_similarity_permille` is the pack's setting (the examples use 600); `reidentify` has no default.
 
 **What the tests check** (`ledger_conformance.rs`): the reference writer reproduces both golden files byte for byte; parse then
 render is the identity; unit and event ids are pinned; state and history; append is a union (idempotent, either order);

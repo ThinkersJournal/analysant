@@ -16,6 +16,39 @@ mod writer;
 
 const CANONICAL: &str = include_str!("fixtures/ledger-conformance/canonical.jsonl");
 const ESCAPING: &str = include_str!("fixtures/ledger-conformance/escaping.jsonl");
+const REWRITE: &str = include_str!("fixtures/ledger-conformance/rewrite.jsonl");
+
+/// R2: a sentence deleted and written again gets a NEW id (generation 1), so an id is never reused.
+/// The ids come from `reidentify`, which reads the file's state; `claim.unit.id` from a throwaway
+/// `Ledger::default()` is generation 0 and is never what a writer records for a re-written sentence.
+#[test]
+fn a_sentence_deleted_and_written_again_gets_a_new_id_in_the_rewrite_golden() {
+    assert_eq!(writer::rewrite(), REWRITE);
+    let events = parse(REWRITE).unwrap();
+    assert_eq!(render(&events), REWRITE);
+    let text = "The intake service validates every request.";
+    let path = vec!["Plan".to_string()];
+    let first = content_id(UnitKind::Claim, "a.md", &path, text, 0, 0);
+    let again = content_id(UnitKind::Claim, "a.md", &path, text, 0, 1);
+    assert_ne!(first, again);
+    let units: Vec<UnitId> = events
+        .iter()
+        .filter_map(|e| match e {
+            analysant_core::ledger_file::Event::Minted { text: t, .. } if t == text => e.unit(),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        units.len(),
+        2,
+        "the sentence is minted twice (the first is gone)"
+    );
+    assert!(units.contains(&first) && units.contains(&again));
+    // The first one is gone; the rewritten one is live.
+    let st = state(&events).unwrap();
+    assert!(st.iter().find(|s| s.unit == first).unwrap().gone);
+    assert!(!st.iter().find(|s| s.unit == again).unwrap().gone);
+}
 
 /// G7: the second golden file. Non-ASCII, quote, backslash, `/`, tab, newline, U+001F, U+007F, U+2028
 /// and an astral character, in the text, the section path and the document path.

@@ -17,7 +17,7 @@
 //! nothing (SPEC 1.9: only the writing tool owns the file).
 
 use crate::ledger_file::{Event, UnitKindName, UnitState, build, mint_key};
-use analysant_core::{
+use crate::{
     Basis, ClaimRef, ControlKind, ControlOutcome, ControlResult, Derivation, Disposition, Finding,
     FindingId, FindingKind, LanguagePack, LensId, QueryDescription, ScopeDescription, SearchRecord,
     UnitId, UnitKind, content_id, normalize,

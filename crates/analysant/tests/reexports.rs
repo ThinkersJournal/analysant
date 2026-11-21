@@ -4,6 +4,7 @@
 //! and names the same items.
 
 use analysant::corpus::{Corpus, Document, extract_corpus, extract_document};
+use analysant::identity::{IdentityParams, Observation, reidentify};
 use analysant::ledger_file::{
     Conflict, Event, LEDGER_FORMAT_VERSION, LEDGER_PATH, LedgerFileError, Merged, MergedText,
     UnitKindName, UnitState, build, history, merge, merge_text, parse, read_file, render, state,
@@ -41,6 +42,12 @@ fn the_old_paths_are_the_core_items() {
     let _ = (
         history, merge, merge_text, parse, read_file, state, write_file,
     );
+    // The identity module moved too.
+    let _ = reidentify;
+    let _ = IdentityParams {
+        edit_similarity_permille: 1,
+    };
+    let _: Option<Observation> = None;
     // And the crate-root re-exports that existed before.
     let _ = (analysant::extract_corpus, analysant::extract_document);
     let _: Option<analysant::Corpus> = None;

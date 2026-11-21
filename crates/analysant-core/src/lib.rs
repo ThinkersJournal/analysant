@@ -16,6 +16,7 @@
 pub mod corpus;
 pub mod en;
 pub mod finding;
+pub mod identity;
 pub mod ledger;
 pub mod ledger_file;
 pub mod lens;
