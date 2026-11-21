@@ -1,0 +1,6 @@
+{"type":"format","name":"analysant-ledger","version":1}
+{"type":"minted","id":"2b55c072a9bce3dd261a07212533a033","unit":"G2A77DBEZX5JUGV2OOOVSG7P6S","kind":"claim","document":"a.md","section_path":["Top","Sub"],"text":"The cache is cold.","text_hash":"fe6c8af3c24b73cb","revision":1}
+{"type":"revised","id":"5541bf859ff881cd6a1a55ce585eebaf","unit":"G2A77DBEZX5JUGV2OOOVSG7P6S","document":"a.md","revision":2,"text":"The cache is warm.","text_hash":"2c4ac8b25d49ff3c"}
+{"type":"moved","id":"6cec8c7d56b2375d79ddd1f2454e265b","unit":"G2A77DBEZX5JUGV2OOOVSG7P6S","document":"a.md","revision":2,"section_path":["Top","Other"]}
+{"type":"gone","id":"3907d4293a0e0e8d088891cd50598ac7","unit":"G2A77DBEZX5JUGV2OOOVSG7P6S","document":"a.md","revision":2}
+{"type":"minted","id":"a77891b3be4158841bed56bf5120ca86","unit":"HXHTVZIKUEBX6VD25PDOLMFCW7","kind":"claim","document":"a.md","section_path":["Top"],"text":"The queue is empty.","text_hash":"76575b9064d2e1df","revision":1}
