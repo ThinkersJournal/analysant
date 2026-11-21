@@ -73,7 +73,13 @@ must get exactly right, and how to check it. Everything a writer needs is in `an
    so a deleted-then-rewritten sentence gets a new id (`rewrite.jsonl`); where it cannot decide (identical sentences added or
    removed) it proposes nothing and reports an ambiguity for a human or an edit operation to settle. An edit the writer
    itself makes (it knows exactly what changed) may append `revised`, `moved` or `gone` directly under rule 8, with
-   `build::*`. `params.edit_similarity_permille` is the pack's setting (the examples use 600); `reidentify` has no default.
+   `build::*`. **The threshold has no default, and the writer chooses it.** `params.edit_similarity_permille` (a share of 1000 of token-set
+   similarity, the Jaccard of the two normal forms' token sets) is what makes a reworded sentence "the same claim, revised"
+   instead of "one gone and one new". No pack carries a value yet and none has been measured, so the kit does not invent one:
+   the examples and tests use 600 only to have a number. Which way a wrong value fails: too low merges different claims
+   (a silent wrong `revised`, history of one claim attached to another); too high splits a real rewording into `gone` plus
+   a new unit (history is kept but the link is lost, and a human can see it). So choose high, and prefer losing a link to
+   inventing one. A measured default (a pack setting, from a labelled set of real edits) is a dated row, not a promise.
 
 **What the tests check** (`ledger_conformance.rs`): the reference writer reproduces both golden files byte for byte; parse then
 render is the identity; unit and event ids are pinned; state and history; append is a union (idempotent, either order);
