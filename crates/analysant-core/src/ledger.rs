@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: MIT OR Apache-2.0
 //! The in-memory ledger (SPEC-STEP1 1.9). Identity needs memory: every unit is minted here, once.
-//! The file format, and re-identification across edits (1.4), are later slices.
+//! The file format and re-identification across edits (1.4) live in the `analysant` crate and mint
+//! through the same function, `content_id`.
 
 use crate::finding::fnv1a;
 use crate::model::{Revision, UnitId, UnitKind};
+use std::collections::BTreeMap;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LedgerEvent {
@@ -16,25 +18,69 @@ pub struct LedgerEvent {
     pub revision: Revision,
 }
 
-/// Mints unit ids and records the event. Ids are a function of the ledger's own counter and a salt, so
-/// a run over the same inputs in the same order mints the same ids, and no two units in one ledger
-/// share an id.
+/// A one-byte tag per kind (numbers, so no word is spelled in engine source).
+fn kind_tag(kind: UnitKind) -> &'static [u8] {
+    match kind {
+        UnitKind::Document => &[1],
+        UnitKind::Section => &[2],
+        UnitKind::Block => &[3],
+        UnitKind::Claim => &[4],
+    }
+}
+
+/// The one id scheme for every unit kind: a function of the unit kind, document, section path and
+/// text, of `occurrence` (the index of this unit among units of identical kind, document, section path
+/// and text minted in the same pass over that document; it tells identical sentences apart) and of
+/// `generation` (how many units of that same content, in the ledger file's state for that document,
+/// were minted before, whether live, edited since or gone; it is 0 with no ledger file, so an id is
+/// never reused). It depends on nothing else: not on the order in
+/// which documents are read, not on a counter, not on a salt. Two ledgers, two runs, two branches that
+/// see the same content mint the same id, which is what makes the ledger file union-mergeable.
+///
+/// **What the id is, and is not.** It is an *identity*: a 128-bit value made of two 64-bit FNV-1a
+/// hashes (the low half over the inputs, the high half over the inputs prefixed with a tag), so it
+/// is deterministic and needs no dependency. It is **not** an integrity check and not cryptographic:
+/// collisions are possible (about 2^-64 per pair for honest input, and trivially constructible by an
+/// adversary), and nothing here claims resistance to one. Never use it to verify that text is
+/// unchanged (the ledger file keeps a separate text hash for that, and also not cryptographic).
+/// **Stability:** the output is a public contract that a ledger file depends on; the test
+/// `content_id_stability_vector` pins one value. Changing it changes every id ever written, so it
+/// is a Breaking change (pre-1.0: the second version number).
+pub fn content_id(
+    kind: UnitKind,
+    document: &str,
+    section_path: &[String],
+    text: &str,
+    occurrence: u64,
+    generation: u64,
+) -> UnitId {
+    let path_text = section_path.join("\u{1f}");
+    let occurrence = occurrence.to_le_bytes();
+    let generation = generation.to_le_bytes();
+    let parts: [&[u8]; 6] = [
+        kind_tag(kind),
+        document.as_bytes(),
+        path_text.as_bytes(),
+        text.as_bytes(),
+        &occurrence,
+        &generation,
+    ];
+    let lo = fnv1a(&parts);
+    let hi_parts: [&[u8]; 7] = [
+        b"hi", parts[0], parts[1], parts[2], parts[3], parts[4], parts[5],
+    ];
+    let hi = fnv1a(&hi_parts);
+    UnitId::from_raw((u128::from(hi) << 64) | u128::from(lo))
+}
+
+/// Mints unit ids by `content_id` and records the event.
 #[derive(Debug, Default)]
 pub struct Ledger {
-    salt: u64,
-    next: u64,
+    seen: BTreeMap<u64, u64>,
     events: Vec<LedgerEvent>,
 }
 
 impl Ledger {
-    /// A ledger whose ids differ from another ledger's when the salts differ.
-    pub fn with_salt(salt: u64) -> Self {
-        Self {
-            salt,
-            ..Self::default()
-        }
-    }
-
     pub fn mint(
         &mut self,
         kind: UnitKind,
@@ -42,10 +88,16 @@ impl Ledger {
         section_path: &[String],
         text: &str,
     ) -> UnitId {
-        self.next += 1;
-        let hi = fnv1a(&[&self.salt.to_le_bytes(), &self.next.to_le_bytes()]);
-        let lo = self.next;
-        let id = UnitId::from_raw((u128::from(hi) << 64) | u128::from(lo));
+        let path_text = section_path.join("\u{1f}");
+        let key = fnv1a(&[
+            kind_tag(kind),
+            document.as_bytes(),
+            path_text.as_bytes(),
+            text.as_bytes(),
+        ]);
+        let occurrence = self.seen.entry(key).or_default();
+        let id = content_id(kind, document, section_path, text, *occurrence, 0);
+        *occurrence += 1;
         self.events.push(LedgerEvent {
             unit: id,
             kind,
