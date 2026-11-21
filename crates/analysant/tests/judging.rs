@@ -54,7 +54,7 @@ fn entry(position: usize, verdict: Verdict, judge: &str) -> Entry {
         "-"
     };
     Entry {
-        id: format!("f-{position:04}"),
+        id: format!("demo:f-{position:04}"),
         verdict,
         class: class.into(),
         reason: format!("reason {position}"),
@@ -289,7 +289,7 @@ fn the_blind_sheet_lists_the_selected_findings_without_any_verdict() {
     let sheet = second_judge_sheet(&o[0], &t, &p).expect("a sheet");
     let positions: Vec<usize> = sheet.iter().map(|(n, _)| *n).collect();
     assert_eq!(positions, [1, 6, 7, 10, 17, 19, 20, 24, 26, 28]);
-    assert_eq!(sheet[0].1.id, "f-0001");
+    assert_eq!(sheet[0].1.id, "demo:f-0001");
 }
 
 // ---- the table --------------------------------------------------------------------------------------------------------
@@ -307,7 +307,7 @@ fn a_second_judges_verdict_on_the_same_id_is_kept_beside_the_first_not_over_it()
     // The same judge cannot judge the same finding twice (a correction is a new, dated decision, not a silent rewrite).
     let again = t.add(entry(1, F, "j1")).unwrap_err();
     assert!(
-        again.0.contains("j1") && again.0.contains("f-0001"),
+        again.0.contains("j1") && again.0.contains("demo:f-0001"),
         "{again}"
     );
     assert_eq!(t.entries().len(), 2);
@@ -366,10 +366,10 @@ fn judging_out_of_order_or_naming_an_unknown_finding_is_refused() {
     assert!(e.0.contains("position 2"), "{e}");
     let mut unknown = table(&[(1, T)], "j1");
     let mut stray = entry(1, T, "j1");
-    stray.id = "f-9999".into();
+    stray.id = "demo:f-9999".into();
     unknown.add(stray).unwrap();
     let e = report_all(&order(40), &unknown, &params("j1")).unwrap_err();
-    assert!(e.0.contains("f-9999"), "{e}");
+    assert!(e.0.contains("demo:f-9999"), "{e}");
 }
 
 #[test]
@@ -377,7 +377,7 @@ fn a_sample_file_that_lists_one_finding_twice_is_refused() {
     let mut text = sample_text(3);
     text += &format!("4\t{}\n", row(2).line());
     let e = parse_judging(&text).unwrap_err();
-    assert!(e.0.contains("f-0002"), "{e}");
+    assert!(e.0.contains("demo:f-0002"), "{e}");
     assert!(
         parse_judging("# analysant-sample v1\n# kind x: findings=banana reading=census seed=1\n")
             .is_err()
@@ -460,11 +460,21 @@ fn the_command_appends_verdicts_and_reports_the_stop() {
     fs::write(s.path().join("sample.tsv"), sample_text(40)).unwrap();
     // Seven false verdicts in a row, then a true one that lies beyond the stop.
     for n in 1..=7 {
-        let o = add(s.path(), &format!("f-{n:04}"), "FALSE", "bare label", "j1");
+        let o = add(
+            s.path(),
+            &format!("demo:f-{n:04}"),
+            "FALSE",
+            "bare label",
+            "j1",
+        );
         assert!(o.status.success(), "{}", err(&o));
         assert_eq!(out(&o), "");
     }
-    assert!(add(s.path(), "f-0008", "TRUE", "-", "j1").status.success());
+    assert!(
+        add(s.path(), "demo:f-0008", "TRUE", "-", "j1")
+            .status
+            .success()
+    );
     let table = fs::read_to_string(s.path().join("verdicts.tsv")).unwrap();
     assert!(table.starts_with("# analysant-verdicts v1\n"));
     assert_eq!(table.lines().filter(|l| !l.starts_with('#')).count(), 8);
@@ -491,9 +501,9 @@ fn the_command_appends_verdicts_and_reports_the_stop() {
     );
     assert_eq!(text, out(&report(&[])), "deterministic");
     // The same judge twice on one finding is refused, and the table is unchanged.
-    let dup = add(s.path(), "f-0001", "TRUE", "-", "j1");
+    let dup = add(s.path(), "demo:f-0001", "TRUE", "-", "j1");
     assert_eq!(dup.status.code(), Some(2));
-    assert!(err(&dup).contains("f-0001"));
+    assert!(err(&dup).contains("demo:f-0001"));
     assert_eq!(
         fs::read_to_string(s.path().join("verdicts.tsv")).unwrap(),
         table
@@ -554,7 +564,7 @@ fn the_sheet_command_prints_the_blind_rows_and_no_verdicts() {
     fs::write(s.path().join("sample.tsv"), sample_text(40)).unwrap();
     for n in 1..=30 {
         assert!(
-            add(s.path(), &format!("f-{n:04}"), "TRUE", "-", "j1")
+            add(s.path(), &format!("demo:f-{n:04}"), "TRUE", "-", "j1")
                 .status
                 .success()
         );
@@ -593,4 +603,21 @@ fn the_sheet_command_prints_the_blind_rows_and_no_verdicts() {
         text.contains("finding number 6"),
         "the finding text is shown: {text}"
     );
+}
+
+/// One boilerplate claim in two projects has one content id; the judging key is `<project>:<id>`, so both are listed and judged apart.
+#[test]
+fn the_same_content_id_in_two_projects_is_two_findings() {
+    let mut a = row(1);
+    let mut b = row(1);
+    a.project = "alpha".into();
+    b.project = "beta".into();
+    let text = format!(
+        "# analysant-sample v1\n# kind {KIND}: findings=2 reading=census seed={SEED}\n1\t{}\n2\t{}\n",
+        a.line(),
+        b.line()
+    );
+    let kinds = parse_judging(&text).expect("two projects, one id, is not a duplicate");
+    assert_eq!(kinds[0].rows[0].id, "alpha:f-0001");
+    assert_eq!(kinds[0].rows[1].id, "beta:f-0001");
 }

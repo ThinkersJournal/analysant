@@ -267,9 +267,12 @@ pub fn parse_judging(text: &str) -> Result<Vec<KindOrder>, JudgeError> {
             ));
         }
         let mut rows = parse_findings(rest).map_err(|e| JudgeError(format!("line {at}: {e}")))?;
-        let Some(row) = rows.pop().filter(|_| rows.is_empty()) else {
+        let Some(mut row) = rows.pop().filter(|_| rows.is_empty()) else {
             return fail(format!("line {at}: expected exactly one finding"));
         };
+        // A finding id is a content id, so one boilerplate claim in three projects has one id. The judging
+        // key is therefore `<project>:<id>` (what `judge append --id` and the blind sheet use).
+        row.id = format!("{}:{}", row.project, row.id);
         if current.rows.iter().any(|r| r.id == row.id) {
             return fail(format!(
                 "line {at}: finding {} is listed twice in {}",

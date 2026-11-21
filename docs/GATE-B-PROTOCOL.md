@@ -1,7 +1,7 @@
 # Gate B protocol: the precision gate
 
 Status: **prep, 2026-11-20 (lane analysant).** The method is SPEC-STEP1 section 5.2; this file is the part a judge needs open while judging.
-The pass line is CireSnave's (D1) and is **not** set here; the strawman is 80% true on 30 judged per finding kind.
+The pass line is set (D1, CireSnave 2026-11-21, SPEC-STEP1 5.2): 80% true over 30 judged per kind, the second judge a blind 10 of 30 with `--void-below 8`, a 30 lane-day cap on Gate B.
 The code is `analysant::gate_b` (`crates/analysant/src/gate_b.rs`); nothing in it judges a finding. The findings producer is the `analysant` binary (section 7).
 
 ## 1. Population (D2, PM ruling 2026-11-17)
@@ -95,10 +95,10 @@ cancellation pair). The README and the slice 4 spec paragraph name four classes 
 Expect those classes on the new projects. If one dominates a kind there, it becomes the next rule or table work; if tables cannot fix it, that
 is the evidence D6 waits on (no model until Gate B names such a class).
 
-## 7. Baseline runs: the procedure (written 2026-11-20; **nothing has been run on these three projects**)
+## 7. Baseline runs: the procedure (written 2026-11-20; run 1 made 2026-11-21, seed 20261121)
 
-D1 is unanswered (board 469). Until CireSnave answers, **no run that could decide Gate B is made** on KISS, PersistAnt or
-HumboldtUnifiedKidTracker, and nothing is tuned on them. This section is the procedure a judge follows once he has. The producer is the
+D1 was answered 2026-11-21. Nothing is tuned on these projects without spending the sample (step 11). **Judging key:** a finding id is a content id, so
+one boilerplate claim in three projects has one id; judging rows are keyed `<project>:<id>`, and `judge append --id` takes that form. The producer is the
 `analysant` binary (`crates/analysant/src/bin/analysant.rs`, library `analysant::produce`); it has only been run on this repository and on
 its own test fixtures.
 
