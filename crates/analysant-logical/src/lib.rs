@@ -87,6 +87,10 @@ pub struct Config {
     /// negation marker governs: "can't *run*", "no *spec*"). Off by default (the Gate A oracle runs predate it); a Gate B tuning
     /// option for the named noise class "the denied token is absent from the positive side".
     pub require_denied_token: bool,
+    /// A shared word that occurs in more than this whole percent of the corpus's files identifies nothing (the project's own name, a
+    /// topic word every document uses): it is set aside before the pair's strength is judged. `None` leaves every shared word counting.
+    /// Off by default; a Gate B option for the noise class "one generic word carrying the pair".
+    pub generic_df_percent: Option<u32>,
 }
 
 /// What a statement does about its capability.
@@ -184,6 +188,7 @@ pub struct ContradictionLens<'a> {
     subject_token_min_chars: usize,
     skip_name_claims: bool,
     require_denied_token: bool,
+    generic_df_percent: Option<u32>,
 }
 
 type Key = (String, usize, String, usize);
@@ -221,6 +226,7 @@ impl<'a> ContradictionLens<'a> {
             subject_token_min_chars: p("subject_token_min_chars"),
             skip_name_claims: config.skip_name_claims,
             require_denied_token: config.require_denied_token,
+            generic_df_percent: config.generic_df_percent,
         })
     }
 
@@ -272,6 +278,27 @@ impl<'a> ContradictionLens<'a> {
             }
         }
         (Polarity::Positive, None)
+    }
+
+    /// The subject tokens that occur in more than `generic_df_percent` of the files the statements come from (empty when off).
+    fn generic_tokens(&self, statements: &[Statement]) -> HashSet<String> {
+        let Some(percent) = self.generic_df_percent else {
+            return HashSet::new();
+        };
+        let mut files: HashSet<&str> = HashSet::new();
+        let mut df: std::collections::HashMap<&str, HashSet<&str>> =
+            std::collections::HashMap::new();
+        for s in statements {
+            files.insert(s.file.as_str());
+            for t in &s.subject {
+                df.entry(t.as_str()).or_default().insert(s.file.as_str());
+            }
+        }
+        let total = files.len();
+        df.into_iter()
+            .filter(|(_, in_files)| in_files.len() * 100 > percent as usize * total)
+            .map(|(t, _)| t.to_string())
+            .collect()
     }
 
     /// The content word a negation governs: the word after a refusal word (`no <capability>`), or the first non-stopword after the
@@ -555,6 +582,7 @@ impl<'a> ContradictionLens<'a> {
         statements: &[Statement],
         store: Option<&ConceptStore<'_>>,
     ) -> Findings {
+        let generic = self.generic_tokens(statements);
         let mut best: BTreeMap<Key, Contradiction> = BTreeMap::new();
         let mut suppressed: BTreeMap<Key, Suppressed> = BTreeMap::new();
         for neg in statements
@@ -584,6 +612,16 @@ impl<'a> ContradictionLens<'a> {
                 };
                 if !self.strong_enough(&shared) {
                     continue;
+                }
+                if !generic.is_empty() {
+                    let rest: Vec<String> = shared
+                        .iter()
+                        .filter(|t| !generic.contains(*t))
+                        .cloned()
+                        .collect();
+                    if !self.strong_enough(&rest) {
+                        continue;
+                    }
                 }
                 let key = (neg.file.clone(), neg.line, pos.file.clone(), pos.line);
                 let cand = Contradiction {
@@ -851,6 +889,56 @@ mod tests {
             statement(&strict, "b.md", 2, absent),
         ];
         assert_eq!(strict.find_contradictions(&s, None).pairs.len(), 1);
+    }
+
+    #[test]
+    fn generic_df_percent_sets_aside_words_every_document_uses() {
+        let en = English::new();
+        let strict = ContradictionLens::new(
+            &en,
+            Config {
+                generic_df_percent: Some(60),
+                ..Config::default()
+            },
+        )
+        .expect("data");
+        let plain = lens(&en);
+        // "scheduler cancellation" is in all four files: it names the project's topic, not a shared fact.
+        let all = |l: &ContradictionLens<'_>| {
+            [
+                statement(l, "a.md", 1, "Scheduler cancellation is not supported"),
+                statement(l, "b.md", 2, "Scheduler cancellation in flight"),
+                statement(l, "c.md", 3, "Scheduler cancellation guide"),
+                statement(l, "d.md", 4, "Scheduler cancellation notes"),
+            ]
+        };
+        assert!(
+            !plain
+                .find_contradictions(&all(&plain), None)
+                .pairs
+                .is_empty()
+        );
+        assert!(
+            strict
+                .find_contradictions(&all(&strict), None)
+                .pairs
+                .is_empty()
+        );
+        assert_eq!(strict.generic_tokens(&all(&strict)).len(), 2);
+        assert!(plain.generic_tokens(&all(&plain)).is_empty());
+        // Positive control: the same words in two of four files are specific enough to pair.
+        let two = [
+            statement(
+                &strict,
+                "a.md",
+                1,
+                "Scheduler cancellation is not supported",
+            ),
+            statement(&strict, "b.md", 2, "Scheduler cancellation in flight"),
+            statement(&strict, "c.md", 3, "Unrelated guide"),
+            statement(&strict, "d.md", 4, "Other notes"),
+        ];
+        assert_eq!(strict.find_contradictions(&two, None).pairs.len(), 1);
     }
 
     #[test]

@@ -51,6 +51,8 @@ pub struct ProjectConfig {
     pub contradiction_skip_names: bool,
     /// `[contradiction] require_denied_token = true`: a denial pairs only with a positive statement that carries the denied word. Off by default.
     pub contradiction_require_denied_token: bool,
+    /// `[contradiction] generic_df_percent = N`: a shared word in more than N% of the corpus's files does not count toward a pair's strength.
+    pub contradiction_generic_df_percent: Option<u32>,
 }
 
 /// A project file that could not be read as configuration.
@@ -142,7 +144,12 @@ impl ProjectConfig {
             only_keys(
                 t,
                 "[contradiction]",
-                &["pairing_stopwords", "skip_names", "require_denied_token"],
+                &[
+                    "pairing_stopwords",
+                    "skip_names",
+                    "require_denied_token",
+                    "generic_df_percent",
+                ],
             )?;
             cfg.pairing_stopwords = strings(t, "pairing_stopwords", "[contradiction]")?;
             cfg.contradiction_skip_names = match t.get("skip_names") {
@@ -162,6 +169,17 @@ impl ProjectConfig {
                     }
                 },
                 None => false,
+            };
+            cfg.contradiction_generic_df_percent = match t.get("generic_df_percent") {
+                None => None,
+                Some(v) => match v.as_integer().and_then(|n| u32::try_from(n).ok()) {
+                    Some(n) if n <= 100 => Some(n),
+                    _ => {
+                        return err(
+                            "`generic_df_percent` in [contradiction] must be a whole number from 0 to 100",
+                        );
+                    }
+                },
             };
         }
         if let Some(t) = subtable(&root, "untasked")? {
@@ -236,6 +254,34 @@ require_denied_token = 2
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn contradiction_generic_df_percent_is_off_by_default_and_must_be_0_to_100() {
+        assert_eq!(
+            ProjectConfig::parse("")
+                .unwrap()
+                .contradiction_generic_df_percent,
+            None
+        );
+        assert_eq!(
+            ProjectConfig::parse(
+                "[contradiction]
+generic_df_percent = 25
+"
+            )
+            .unwrap()
+            .contradiction_generic_df_percent,
+            Some(25)
+        );
+        for bad in ["101", "-1", "\"x\"", "2.5"] {
+            let t = format!(
+                "[contradiction]
+generic_df_percent = {bad}
+"
+            );
+            assert!(ProjectConfig::parse(&t).is_err(), "{bad}");
+        }
     }
 
     #[test]

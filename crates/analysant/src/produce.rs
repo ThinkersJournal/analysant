@@ -381,6 +381,7 @@ pub fn produce(root: &Path, opts: &Options) -> Result<Production, ProduceError> 
             extra_pairing_stopwords: config.pairing_stopwords.clone(),
             skip_name_claims: config.contradiction_skip_names,
             require_denied_token: config.contradiction_require_denied_token,
+            generic_df_percent: config.contradiction_generic_df_percent,
         },
     )
     .map_err(|e| ProduceError(e.to_string()))?;
