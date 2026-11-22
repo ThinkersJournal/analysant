@@ -91,6 +91,9 @@ pub struct Config {
     /// topic word every document uses): it is set aside before the pair's strength is judged. `None` leaves every shared word counting.
     /// Off by default; a Gate B option for the noise class "one generic word carrying the pair".
     pub generic_df_percent: Option<u32>,
+    /// A pair needs at least this many shared words that are not generic (see `generic_df_percent`); `None` leaves the pair's own strength
+    /// rule alone. Off by default; a Gate B option for pairs held by a single shared word.
+    pub min_shared_tokens: Option<usize>,
 }
 
 /// What a statement does about its capability.
@@ -189,6 +192,7 @@ pub struct ContradictionLens<'a> {
     skip_name_claims: bool,
     require_denied_token: bool,
     generic_df_percent: Option<u32>,
+    min_shared_tokens: Option<usize>,
 }
 
 type Key = (String, usize, String, usize);
@@ -227,6 +231,7 @@ impl<'a> ContradictionLens<'a> {
             skip_name_claims: config.skip_name_claims,
             require_denied_token: config.require_denied_token,
             generic_df_percent: config.generic_df_percent,
+            min_shared_tokens: config.min_shared_tokens,
         })
     }
 
@@ -613,13 +618,16 @@ impl<'a> ContradictionLens<'a> {
                 if !self.strong_enough(&shared) {
                     continue;
                 }
-                if !generic.is_empty() {
+                if !generic.is_empty() || self.min_shared_tokens.is_some() {
                     let rest: Vec<String> = shared
                         .iter()
                         .filter(|t| !generic.contains(*t))
                         .cloned()
                         .collect();
-                    if !self.strong_enough(&rest) {
+                    if !generic.is_empty() && !self.strong_enough(&rest) {
+                        continue;
+                    }
+                    if self.min_shared_tokens.is_some_and(|n| rest.len() < n) {
                         continue;
                     }
                 }
@@ -939,6 +947,37 @@ mod tests {
             statement(&strict, "d.md", 4, "Other notes"),
         ];
         assert_eq!(strict.find_contradictions(&two, None).pairs.len(), 1);
+    }
+
+    #[test]
+    fn min_shared_tokens_drops_a_pair_held_by_too_few_shared_words() {
+        let en = English::new();
+        let with = |n: Option<usize>| {
+            ContradictionLens::new(
+                &en,
+                Config {
+                    min_shared_tokens: n,
+                    ..Config::default()
+                },
+            )
+            .expect("data")
+        };
+        let pair = |l: &ContradictionLens<'_>| {
+            [
+                statement(l, "a.md", 1, "Scheduler cancellation is not supported"),
+                statement(l, "b.md", 2, "Scheduler cancellation in flight"),
+            ]
+        };
+        // The pair shares two words (scheduler, cancellation).
+        let (off, two, three) = (with(None), with(Some(2)), with(Some(3)));
+        assert_eq!(off.find_contradictions(&pair(&off), None).pairs.len(), 1);
+        assert_eq!(two.find_contradictions(&pair(&two), None).pairs.len(), 1);
+        assert!(
+            three
+                .find_contradictions(&pair(&three), None)
+                .pairs
+                .is_empty()
+        );
     }
 
     #[test]

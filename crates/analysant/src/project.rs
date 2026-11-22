@@ -57,6 +57,8 @@ pub struct ProjectConfig {
     pub contradiction_require_denied_token: bool,
     /// `[contradiction] generic_df_percent = N`: a shared word in more than N% of the corpus's files does not count toward a pair's strength.
     pub contradiction_generic_df_percent: Option<u32>,
+    /// `[contradiction] min_shared_tokens = N`: a pair needs at least N shared words that are not generic. Off by default.
+    pub contradiction_min_shared_tokens: Option<usize>,
 }
 
 /// A project file that could not be read as configuration.
@@ -180,6 +182,7 @@ impl ProjectConfig {
                     "skip_names",
                     "require_denied_token",
                     "generic_df_percent",
+                    "min_shared_tokens",
                 ],
             )?;
             cfg.pairing_stopwords = strings(t, "pairing_stopwords", "[contradiction]")?;
@@ -200,6 +203,17 @@ impl ProjectConfig {
                     }
                 },
                 None => false,
+            };
+            cfg.contradiction_min_shared_tokens = match t.get("min_shared_tokens") {
+                None => None,
+                Some(v) => match v.as_integer().and_then(|n| usize::try_from(n).ok()) {
+                    Some(n) => Some(n),
+                    None => {
+                        return err(
+                            "`min_shared_tokens` in [contradiction] must be a whole number",
+                        );
+                    }
+                },
             };
             cfg.contradiction_generic_df_percent = match t.get("generic_df_percent") {
                 None => None,
@@ -347,6 +361,42 @@ only_kinds = [\"order\"]
             ProjectConfig::parse(
                 "[untasked]
 only_kinds = \"directive\"
+"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn contradiction_min_shared_tokens_is_off_by_default_and_must_be_a_number() {
+        assert_eq!(
+            ProjectConfig::parse("")
+                .unwrap()
+                .contradiction_min_shared_tokens,
+            None
+        );
+        assert_eq!(
+            ProjectConfig::parse(
+                "[contradiction]
+min_shared_tokens = 2
+"
+            )
+            .unwrap()
+            .contradiction_min_shared_tokens,
+            Some(2)
+        );
+        assert!(
+            ProjectConfig::parse(
+                "[contradiction]
+min_shared_tokens = -1
+"
+            )
+            .is_err()
+        );
+        assert!(
+            ProjectConfig::parse(
+                "[contradiction]
+min_shared_tokens = \"2\"
 "
             )
             .is_err()
