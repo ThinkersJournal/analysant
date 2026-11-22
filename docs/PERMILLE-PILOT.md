@@ -43,12 +43,12 @@ The curves cross between 250 and 350: the highest "different" pair is 300 and th
 **Default `edit_similarity_permille` = 400 for this pack and token-set Jaccard**: on this corpus it gives 2 lost-links of 73 and 0 wrong-links of 10.
 
 - **Set too low (about 300 and below):** the failure is a **wrong-link**: short, table-cell-like claims (file paths, identifiers, row labels) sharing one or two tokens are merged into one claim's history.
-- **Set too high (600 and above):** the failure is a **lost-link**: a revised claim is minted as a new claim. At 700 it loses 49 of 73, because version-counter bumps and numeric edits sit near 600.
+- **Set too high (600 and above):** the failure is a **lost-link**: a revised claim is minted as a new claim. At 700 it loses 49 of 73, because the counter and version bumps sit at 600 to 700.
 - A wrong-link merges two claims' histories silently; a lost-link shows up as a removal plus an addition. So when unsure, err high within 400-600, not low.
 
 ## Limits (why this is a pilot)
 
 - **One judge**; no second judge yet (board 469).
-- **The "same" set is dominated by two mechanical edit types**: counter or version bumps (42 of 73, all near 600, from one file) and a project-wide rename (17 of 73, 750-916). Only about 14 are prose rewordings, so the 250-500 region, where the default matters, rests on a handful of pairs: **not enough data to claim 400 over 350 or 500.**
+- **The "same" set is dominated by two mechanical edit types**: counter or version bumps (38 of 73, similarity 500-700, from one file) and a project-wide rename (17 of 73, 750-916). The other 18 are small edits such as a typo, a path prefix or an added word, so the 250-500 region, where the default matters, rests on a handful of pairs: **not enough data to claim 400 over 350 or 500.**
 - The "different" set is 10 pairs, mostly short table cells and paths.
-- Three files, two of which share an origin; no non-Markdown corpus.
+- Three files from three repos; Markdown only.
