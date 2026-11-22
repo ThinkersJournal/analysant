@@ -24,6 +24,10 @@ A kind that stopped at the 7th false positive cannot reach 30 judged; under the 
 - The rounds changed the producer through off-by-default options (Gate A, the Fuel runs v4 and v5, unchanged at every commit). They shrink the populations by 70 to 99% without raising the true rate on a fresh sample.
 - Named noise: bare label or identifier as a side; one generic word carrying a pair; a denied word absent from the positive side; a family match across different words; descriptions of behaviour; standing rules and how-to steps; records of finished work (changelog, archive, checked items). The Gate C Stop condition (SPEC-STEP1 5.3: no kind clears after two tuning rounds on fresh samples) is met on this evidence; the decision is the PM's and CireSnave's.
 
+## Independent check (Gate C)
+
+A third lane (`coderipper-c`), given only the 21 blind rows of runs 1 and 2 (run 1 both kinds, run 2 untasked), the rubric and the clones at the fixed revisions, and none of the other verdict files, judged all 21 FALSE: 21 of 21 verdict agreement with the analysant lane, 0 true, 0 unjudgeable. Its classes (keyword overlap, different subject, agreeing sides; built design detail, done spec step, shipped changelog entry, covered by a done row, convention text, completed checkbox, archived completion claim, standing invariant already enforced) map onto the classes above. All three judges used one rubric, so this narrows the shared-method caveat and does not remove it.
+
 ## Run 0: no-config baseline
 
 - Seed 20261121 (not reused). Projects: KISS 8db36f2; PersistAnt 8717dfd; Humboldt (private; aggregate counts only). Plans: ROADMAP.md, ROADMAP.md, docs/ROADMAP.md. Config: none (no-config baseline).
