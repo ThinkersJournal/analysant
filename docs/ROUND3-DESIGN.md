@@ -31,3 +31,10 @@ Predicted fix: generic words (2, round-1 df), bare labels (1), absent denied tok
 Three public projects not seen in rounds 1 or 2 (not KISS, PersistAnt, Humboldt, Fuel, synapse, vulkane, configurant, httpant, antspawn, webhostant, baracuda, Unpopped), named to pm-ants before any look; one seed fixed in advance and never reused; no-config populations counted first; 7 findings per kind; blind verdicts by this lane and coderipper-c; pass line 80% true of at least 5 judged (CireSnave's ruling). Config fixed in advance: round 1 and 2 options plus the two above.
 
 Risk stated now: `strict` may shrink contradiction to a census below 5 judged (run 2 left 2). A census under 5 cannot pass the rule; I will report it as that, not as a pass, and will not loosen the rule after looking. If round 3 fails, the Stop condition returns to CireSnave.
+
+## Fixed before any run (2026-11-22, PM OK relayed by pm-ants)
+
+- Seed: **20261124** (never used; 20261121-23 are spent).
+- Projects (public, none seen in rounds 1-2), at origin/main fetched 2026-11-22: **sageant** 2bb77ec0724a, **fishstringer** 8c203f2ae6db, **lightbulb** 40fd2d37daf1. Plan: ROADMAP.md of each.
+- Config: round 1 and 2 options (`skip_names`; contradiction `require_denied_token`, `generic_df_percent = 20`, `min_shared_tokens = 2`; untasked `only_kinds = [directive, proposal, decision]`) plus `require_open_work` and `strict`.
+- Order: no-config populations first, then the tuned run; 7 per kind; blind verdicts by this lane and coderipper-c. A contradiction population under 5 judged is reported as a census, not a pass; any widening is a proposal to CireSnave.
