@@ -6,7 +6,7 @@
 //! analysant findings <dir> [--plan PATH]... [--project NAME] [--code DIR] [--format tsv|jsonl]
 //! analysant counts   <dir> [--plan PATH]... [--project NAME] [--code DIR]
 //! analysant sample   <findings-file> --seed N [--kind LENS/KIND]
-//! analysant judge report <sample-file> <verdicts-file> --judge J --pass-percent P [--second J2] [--void-below K]
+//! analysant judge report <sample-file> <verdicts-file> --judge J --pass-percent P [--second J2] [--void-below K] [--stopped-agree-percent P --stopped-min-judged N]
 //! analysant judge append <verdicts-file> --id ID --verdict V [--class C] --reason R --judge J
 //! analysant judge sheet  <sample-file> <verdicts-file> --judge J --pass-percent P --kind LENS/KIND
 //! ```
@@ -216,7 +216,14 @@ fn judge_inputs(a: &Args) -> Result<(Vec<KindOrder>, VerdictTable), String> {
 fn judge_report(args: &[String]) -> Result<String, String> {
     let a = parse(
         args,
-        &["--judge", "--second", "--pass-percent", "--void-below"],
+        &[
+            "--judge",
+            "--second",
+            "--pass-percent",
+            "--void-below",
+            "--stopped-agree-percent",
+            "--stopped-min-judged",
+        ],
     )?;
     let judge = required(&a, "--judge")?;
     let second = a.one("--second");
@@ -227,11 +234,32 @@ fn judge_report(args: &[String]) -> Result<String, String> {
         ),
         None => None,
     };
+    let num = |name: &str| -> Result<Option<usize>, String> {
+        a.one(name)
+            .map(|v| {
+                v.parse::<usize>()
+                    .map_err(|_| format!("{name} must be a number, got {v}"))
+            })
+            .transpose()
+    };
+    let stopped_rule = match (
+        num("--stopped-agree-percent")?,
+        num("--stopped-min-judged")?,
+    ) {
+        (Some(p), Some(m)) => Some(analysant::judging::StoppedRule {
+            percent: u32::try_from(p)
+                .map_err(|_| "--stopped-agree-percent is too large".to_string())?,
+            min_judged: m,
+        }),
+        (None, None) => None,
+        _ => return Err("--stopped-agree-percent and --stopped-min-judged go together".into()),
+    };
     let params = Params {
         judge: &judge,
         second_judge: second.as_deref(),
         pass_percent: pass_percent(&a)?,
         void_below,
+        stopped_rule,
     };
     let (orders, table) = judge_inputs(&a)?;
     let reports = report_all(&orders, &table, &params).map_err(|e| e.to_string())?;
@@ -276,6 +304,7 @@ fn judge_sheet(args: &[String]) -> Result<String, String> {
         second_judge: None,
         pass_percent: pass_percent(&a)?,
         void_below: None,
+        stopped_rule: None,
     };
     let (orders, table) = judge_inputs(&a)?;
     let Some(order) = orders.iter().find(|o| o.kind == kind) else {

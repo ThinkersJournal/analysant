@@ -21,8 +21,8 @@
 //! an event: it has no id, takes no part in `state` or `history`, and a merge keeps exactly one.
 //! A file with no records at all (empty or blank) is an empty ledger.
 
-use analysant_core::finding::fnv1a;
-use analysant_core::{Revision, UnitId, UnitKind};
+use crate::finding::fnv1a;
+use crate::{Revision, UnitId, UnitKind};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fmt;
@@ -605,7 +605,7 @@ pub fn history(events: &[Event], unit: UnitId) -> Vec<(Revision, String)> {
         .collect()
 }
 
-pub(crate) fn mint_key(document: &str, section_path: &[String], text: &str) -> u64 {
+pub fn mint_key(document: &str, section_path: &[String], text: &str) -> u64 {
     fnv1a(&[
         document.as_bytes(),
         section_path.join("\u{1f}").as_bytes(),
@@ -635,7 +635,7 @@ pub fn write_file(path: &Path, events: &[Event]) -> Result<(), LedgerFileError> 
 /// Build events with their ids filled in (for the writing tool and for tests).
 pub mod build {
     use super::{Event, UnitKindName, text_hash};
-    use analysant_core::UnitId;
+    use crate::UnitId;
 
     fn sealed(mut ev: Event) -> Event {
         let id = ev.compute_id();

@@ -80,6 +80,9 @@ pub struct Config {
     /// Words that identify nothing in this project's corpus (its own name, say), removed from every
     /// subject before pairing, on top of the pack's list.
     pub extra_pairing_stopwords: Vec<String>,
+    /// Leave Name-kind claims (a bare identifier, clause id or label) out of the statements: they assert nothing a denial could
+    /// contradict. Off by default (the Gate A oracle runs include them); a Gate B tuning option.
+    pub skip_name_claims: bool,
 }
 
 /// What a statement does about its capability.
@@ -175,6 +178,7 @@ pub struct ContradictionLens<'a> {
     strong_shared_min: usize,
     positive_subject_min: usize,
     subject_token_min_chars: usize,
+    skip_name_claims: bool,
 }
 
 type Key = (String, usize, String, usize);
@@ -210,6 +214,7 @@ impl<'a> ContradictionLens<'a> {
             strong_shared_min: p("strong_shared_min"),
             positive_subject_min: p("positive_subject_min"),
             subject_token_min_chars: p("subject_token_min_chars"),
+            skip_name_claims: config.skip_name_claims,
         })
     }
 
@@ -345,6 +350,9 @@ impl<'a> ContradictionLens<'a> {
         for l in claims {
             let c = l.claim;
             if c.form == Form::CodeSpan || c.kind == Kind::Report {
+                continue;
+            }
+            if self.skip_name_claims && c.kind == Kind::Name {
                 continue;
             }
             let subject = self.subject_tokens(&c.normal.key);
@@ -690,6 +698,7 @@ mod tests {
             &en,
             Config {
                 extra_pairing_stopwords: vec!["acme".into()],
+                ..Config::default()
             },
         )
         .expect("data");

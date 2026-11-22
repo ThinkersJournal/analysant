@@ -3,13 +3,12 @@
 //! (`corpus`) and checks them against a plan (`untasked`), on `analysant-core` and
 //! `analysant-lexical`. See docs/SPEC-STEP1.md.
 
+pub use analysant_core::{corpus, identity, ledger_file};
+
 pub mod contradiction;
-pub mod corpus;
 pub mod doccode;
 pub mod gate_b;
-pub mod identity;
 pub mod judging;
-pub mod ledger_file;
 pub mod ownership;
 pub mod pragmatic;
 pub mod produce;

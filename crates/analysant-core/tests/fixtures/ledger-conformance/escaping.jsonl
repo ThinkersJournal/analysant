@@ -1,0 +1,2 @@
+{"type":"format","name":"analysant-ledger","version":1}
+{"type":"minted","id":"c64a49681aa45359a0ee904f0e0cdf83","unit":"EWD7LQZN33YYP4BKCRM77DQ2TB","kind":"claim","document":"d/é.md","section_path":["Café 日本","a/b \"q\" \\"],"text":"Tab\there, \"quote\", back\\slash, 1/2, nl\nx, \u001funit-sep, del,  ls, emoji 😀.","text_hash":"4273dd92f2170356","revision":1}

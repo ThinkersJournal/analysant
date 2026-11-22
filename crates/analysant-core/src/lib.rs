@@ -13,15 +13,19 @@
 //! cryptographic; collisions are possible and can be constructed on purpose, and no claim is made against
 //! an adversary.
 
+pub mod corpus;
 pub mod en;
 pub mod finding;
+pub mod identity;
 pub mod ledger;
+pub mod ledger_file;
 pub mod lens;
 #[cfg(feature = "markdown")]
 pub mod markdown;
 pub mod model;
 pub mod pack;
 
+pub use corpus::{Corpus, Document, extract_corpus, extract_document};
 pub use en::English;
 pub use finding::{
     Basis, ControlKind, ControlOutcome, ControlResult, Disposition, Finding, FindingId,

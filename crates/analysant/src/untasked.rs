@@ -76,6 +76,21 @@ pub fn directed_but_untasked(
     aliases: &AliasTable,
     mode: MatchMode,
 ) -> UntaskedRun {
+    directed_but_untasked_with(pack, corpus, plan_lines, aliases, mode, false)
+}
+
+/// As `directed_but_untasked`; with `skip_names` a Name-kind claim is set aside like a claim with no key (it states no work).
+pub fn directed_but_untasked_with(
+    pack: &dyn LanguagePack,
+    corpus: &Corpus,
+    plan_lines: &[String],
+    aliases: &AliasTable,
+    mode: MatchMode,
+    skip_names: bool,
+) -> UntaskedRun {
+    let set_aside = |c: &analysant_core::Claim| {
+        c.normal.is_empty() || (skip_names && c.kind == analysant_core::Kind::Name)
+    };
     let claims: Vec<_> = corpus.claims().collect();
     let index = TermIndex::build(
         &format!("{} plan lines", plan_lines.len()),
@@ -89,7 +104,7 @@ pub fn directed_but_untasked(
     let eligible: Vec<usize> = claims
         .iter()
         .enumerate()
-        .filter(|(_, (_, c))| !c.normal.is_empty())
+        .filter(|(_, (_, c))| !set_aside(c))
         .map(|(i, _)| i)
         .collect();
     let mut control_cache: HashMap<usize, ControlOutcome> = HashMap::new();
@@ -115,7 +130,7 @@ pub fn directed_but_untasked(
 
     let mut outcomes = Vec::with_capacity(claims.len());
     for (i, (doc, claim)) in claims.iter().enumerate() {
-        if claim.normal.is_empty() {
+        if set_aside(claim) {
             outcomes.push(Outcome {
                 index: i,
                 status: Status::NoKey,

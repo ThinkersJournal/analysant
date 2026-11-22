@@ -2,7 +2,7 @@
 //! Documents to claims: a format adapter finds the structure, a language pack finds the claims, the
 //! ledger mints their identities. No claim is classified here (kind stays `Unclassified`).
 
-use analysant_core::{
+use crate::{
     BlockKind, Claim, EpistemicStatus, ExtractorId, Form, FormatAdapter, Kind, LanguagePack,
     Ledger, Provenance, Revision, SourceRef, Span, Unit, UnitId, UnitKind, normalize,
 };

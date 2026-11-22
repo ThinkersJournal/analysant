@@ -1,0 +1,5 @@
+{"type":"format","name":"analysant-ledger","version":1}
+{"type":"minted","id":"200d6f72171adb8e916edc6645a09e88","unit":"A5HKROD4QWUXG2DBFZMLR2NCLX","kind":"claim","document":"a.md","section_path":["Plan"],"text":"The intake service validates every request.","text_hash":"c230967a51a30e29","revision":1}
+{"type":"gone","id":"fe4faa2b01e0155bdbdc010097aa3a51","unit":"A5HKROD4QWUXG2DBFZMLR2NCLX","document":"a.md","revision":1}
+{"type":"minted","id":"294df589148a2b0fdf68aa18c00884c1","unit":"ERSAFNRONLGSXWITVKLQ6O4TU5","kind":"claim","document":"a.md","section_path":["Plan"],"text":"The queue drains in arrival order.","text_hash":"72fb9df2464e84df","revision":1}
+{"type":"minted","id":"070c2468a191935d92daf0f70fe0fe77","unit":"FQUS3D7BVRFO5DJ3WMYB4ECD3E","kind":"claim","document":"a.md","section_path":["Plan"],"text":"The intake service validates every request.","text_hash":"c230967a51a30e29","revision":1}

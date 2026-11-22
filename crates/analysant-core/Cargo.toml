@@ -12,3 +12,7 @@ authors.workspace = true
 default = ["markdown"]
 # The Markdown FormatAdapter (D4): in core so that slice 1 needs no unbuilt structural crate.
 markdown = []
+
+[dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"

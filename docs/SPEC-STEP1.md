@@ -222,7 +222,7 @@ AnalysAnt tools, one JSON record per unit event (minted, revised, moved, gone, r
 correct, because a machine writes it and nothing reads it by grep. Whether it is committed to the project, and how two branches merge it,
 is open (section 8, D3).
 
-**Ledger writer: EditAnt (pm-ants 2026-11-20, from D5; board 465).** The writing tool is the editing tool, so the ledger *writer* is not built in AnalysAnt: AnalysAnt reads the file and union-merges (`ledger_file`), and re-identifies (`identity`). Required interface of the writer: it writes `.analysant/ledger.jsonl` events in the `ledger_file` format; unit ids come from `analysant_core::content_id`, the one id scheme for every unit kind (a function of unit kind, document, section path, text, occurrence and generation, and nothing else). Exactly: `text` is the unit text as extracted, with no further normalisation; `occurrence` is the index of the unit among units of identical (kind, document, section path, text) minted in the same pass over that one document (scope: one document, never the project); `generation` is the number of units minted with that same content (the text at minting) in the ledger file's state for that document, live, edited since or gone, and is 0 with no ledger file. So a writer that mints must read the ledger first for `generation`, and must call `content_id`, never reimplement it; the first line of a non-empty file is the format header `{"type":"format","name":"analysant-ledger","version":1}` (`ledger_file::LEDGER_FORMAT_VERSION`), written first and never among the events, and a reader refuses a file without it and a version it does not read, naming both (`UnsupportedVersion`), and `merge_text` refuses to merge files of different versions (`VersionMismatch`); the write is atomic (temp file, then rename); it never deletes old text and appends `minted`, `revised`, `moved` and `gone` events; it refuses an edit whose expected revision does not match the ledger's. Nothing is needed from EditAnt until its D7 path (`.analysant/`) settles.
+**Ledger writer: EditAnt (pm-ants 2026-11-20, from D5; board 465).** The writing tool is the editing tool, so the ledger *writer* is not built in AnalysAnt: AnalysAnt reads the file and union-merges (`ledger_file`), and re-identifies (`identity`). Required interface of the writer: it writes `.analysant/ledger.jsonl` events in the `ledger_file` format; unit ids come from `analysant_core::content_id`, the one id scheme for every unit kind (a function of unit kind, document, section path, text, occurrence and generation, and nothing else). Exactly: `text` is the unit text as extracted, with no further normalisation; `occurrence` is the index of the unit among units of identical (kind, document, section path, text) minted in the same pass over that one document (scope: one document, never the project); `generation` is the number of units minted with that same content (the text at minting) in the ledger file's state for that document, live, edited since or gone, and is 0 with no ledger file. So a writer that mints must read the ledger first for `generation`, and must call `content_id`, never reimplement it; the first line of a non-empty file is the format header `{"type":"format","name":"analysant-ledger","version":1}` (`ledger_file::LEDGER_FORMAT_VERSION`), written first and never among the events, and a reader refuses a file without it and a version it does not read, naming both (`UnsupportedVersion`), and `merge_text` refuses to merge files of different versions (`VersionMismatch`); the write is atomic (temp file, then rename); it never deletes old text and appends `minted`, `revised`, `moved` and `gone` events; it refuses an edit whose expected revision does not match the ledger's. Nothing is needed from EditAnt until its D7 path (`.analysant/`) settles. **Where the code lives (2026-11-21, kit gaps G2/G5/G6):** `corpus` (extract_document), `identity` (reidentify) and `ledger_file` are in `analysant-core`, re-exported by `analysant`, so a core-only publish is enough for a writer; the full rules, the two golden files, the reference writer and the independent checker are `docs/LEDGER-WRITER-CONFORMANCE.md`. A write is a whole-file union rewrite under `.analysant/ledger.lock`, not a byte append.
 
 ## 2. The language-pack seam
 
@@ -614,7 +614,13 @@ a ref). Adopted as written, with the changes noted:
 - **Tuning discipline:** a rule tuned on a sample invalidates that sample; the re-measure uses a **fresh** sample (different seed, and
   projects not seen during tuning). Without this the gate measures the tuner, not the tool.
 
-**The pass line is CireSnave's** (D1). **PROPOSAL (strawman only):** 80% true on at least 30 judged per reported finding kind, the gate the CodeRipper performance-rules plan set for its own candidate rules (`2026-10-24-performance-rules-precision.md:4`, from `2026-10-23-performance-rules.md` section 7); CodeRipper has no standing precision bar (its lane, 2026-11-20). The 80% is this proposal's own, on the stop-at-7th-false-positive arithmetic; a kind below the line
+**PINNED (D1 answered by CireSnave 2026-11-21, relayed by the PM via pm-ants; his words: "469: A1.  B: 80%.  C: cap 30 lane-days and notify me if we reach that cap."):**
+the pass line is **80% true over 30 judged per finding kind**, stop at the 7th false positive, fewer than 30 findings is a census and cannot pass;
+a **second judge (a CodeRipper lane) re-judges a blind 10 of the 30, and agreement below 8 of 10 voids the figure**. This overrides the "threshold"
+left open in the second-judge bullet above. **PM-accepted 2026-11-21 (pm-ants ruling): for a kind that stopped before 10 items could be
+selected, the second judge re-judges every judged item blind and the figure holds when at least 80% of them agree and at least 5 were judged**
+(Gate B run 1 used it: 7 of 7 per kind). `analysant judge report --stopped-agree-percent 80 --stopped-min-judged 5`. Humboldt stays aggregate counts only in public text.
+**Original proposal, now adopted:** 80% true on at least 30 judged per reported finding kind, the gate the CodeRipper performance-rules plan set for its own candidate rules (`2026-10-24-performance-rules-precision.md:4`, from `2026-10-23-performance-rules.md` section 7); CodeRipper has no standing precision bar (its lane, 2026-11-20). The 80% is this proposal's own, on the stop-at-7th-false-positive arithmetic; a kind below the line
 is **not shown in `health_report`** (it can still be run and inspected) rather than shown with a
 warning, because the false-confidence risk is that a presented finding is believed.
 
@@ -633,8 +639,9 @@ line.
 - **Re-scope** (keep the base crates and ship only the kinds that clear) if some clear and some do not.
 - **Stop** if **no** kind clears after **two tuning rounds**, each remeasured on a fresh sample (5.2), or if Gate A cannot be reached without
   Fuel-specific code (the genericity claim failed, which is the project's central claim).
-- The **cost** line is a number of lane-days CireSnave names (the PM's note lists opportunity cost against Unpopped and Fuel as a risk,
-  `docs/IDEAS-AND-DECISIONS-2026-11-17.md:41`); I do not invent one.
+- The **cost** line is **PINNED (CireSnave 2026-11-21, verbatim): "C: cap 30 lane-days and notify me if we reach that cap."** A hard cap of
+  30 lane-days in all for Gate B work. The lane keeps a running count in `HANDOFF.md`, sends `[STATUS]` to the PM cc pm-ants at 20 and at 25,
+  and at 30 stops Gate B work and sends `[FINDING]` to the PM cc pm-ants. Kill/continue otherwise follows the strawman above.
 
 ## 6. Build order
 
@@ -702,7 +709,7 @@ Each is an `[ASK]` to the PM (recommended answer first).
 
 | # | Question | Recommend | Blocks |
 |---|---|---|---|
-| D1 | The precision pass line and the kill/continue criterion (CireSnave's) | 80% on 30 judged per finding kind, three non-Fuel projects, two tuning rounds (5.2, 5.3) | Gate B, Gate C |
+| D1 | The precision pass line and the kill/continue criterion (CireSnave's) | ANSWERED 2026-11-21: 80% on 30 judged per kind, 2nd judge 8 of 10 blind, cap 30 lane-days (5.2, 5.3); three non-Fuel projects, two tuning rounds | Gate B, Gate C |
 | D2 | Which three other projects form the Gate B population | one repo each from a Rust library, a Rust application and a docs-heavy repo; baracuda and Unpopped (used by CodeRipper's sample) are candidates | Gate B |
 | D3 | Is the ledger committed to the analysed project, and how do branches merge it (1.9) | committed; merge by union of event records, since events carry unique ids | slice 1's file format |
 | D4 | Markdown adapter inside `analysant-core` behind a feature (recommended), or only in `analysant-structural` | core + feature, so slice 1 needs no unbuilt crate | slice 1 |
