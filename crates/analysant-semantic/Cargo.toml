@@ -9,6 +9,6 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-analysant-core = { path = "../analysant-core", version = "0.2.0" }
-analysant-lexical = { path = "../analysant-lexical", version = "0.2.0" }
+analysant-core = { path = "../analysant-core", version = "0.3.0" }
+analysant-lexical = { path = "../analysant-lexical", version = "0.3.0" }
 semanticant-core = "0.1.0"
