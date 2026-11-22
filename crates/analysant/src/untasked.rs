@@ -76,11 +76,12 @@ pub fn directed_but_untasked(
     aliases: &AliasTable,
     mode: MatchMode,
 ) -> UntaskedRun {
-    directed_but_untasked_with(pack, corpus, plan_lines, aliases, mode, false, &[])
+    directed_but_untasked_with(pack, corpus, plan_lines, aliases, mode, false, &[], false)
 }
 
 /// As `directed_but_untasked`; with `skip_names` a Name-kind claim is set aside like a claim with no key (it states no work), and a
 /// non-empty `only_kinds` sets aside every claim whose kind is not listed (descriptions and records of finished work state no task).
+#[allow(clippy::too_many_arguments)] // one switch per Gate B tuning option; a config struct would change the public seam
 pub fn directed_but_untasked_with(
     pack: &dyn LanguagePack,
     corpus: &Corpus,
@@ -89,9 +90,11 @@ pub fn directed_but_untasked_with(
     mode: MatchMode,
     skip_names: bool,
     only_kinds: &[analysant_core::Kind],
+    require_open_work: bool,
 ) -> UntaskedRun {
     let set_aside = |c: &analysant_core::Claim| {
         c.normal.is_empty()
+            || (require_open_work && !states_open_work(pack, c))
             || (skip_names && c.kind == analysant_core::Kind::Name)
             || (!only_kinds.is_empty() && !only_kinds.contains(&c.kind))
     };
@@ -217,6 +220,40 @@ pub fn directed_but_untasked_with(
         plan_lines: plan_lines.len(),
         outcomes,
     }
+}
+
+/// A claim from a work-bearing document that says work is open: the Gate B round 3 `require_open_work` selection (docs/ROUND3-DESIGN.md).
+fn states_open_work(pack: &dyn LanguagePack, c: &analysant_core::Claim) -> bool {
+    let lex = pack.lexicons();
+    let any_in =
+        |text: &str, name: &str| lex.entries(name).iter().any(|e| text.contains(e.as_str()));
+    let path = c.unit.source.path.replace('\\', "/").to_lowercase();
+    if any_in(&path, "non-work-documents") || !any_in(&path, "work-documents") {
+        return false;
+    }
+    let text = c.text.trim_start_matches(['-', '*', ' ']).to_lowercase();
+    // The checkbox entries are, in order, the open box and the done box.
+    let boxes = lex.entries("checkbox-openers");
+    if boxes
+        .get(1)
+        .is_some_and(|done| text.starts_with(done.as_str()))
+    {
+        return false;
+    }
+    if boxes
+        .first()
+        .is_some_and(|open| text.starts_with(open.as_str()))
+    {
+        return true;
+    }
+    if lex
+        .entries("standing-rule-openers")
+        .iter()
+        .any(|o| text.starts_with(o.as_str()))
+    {
+        return false;
+    }
+    any_in(&text, "open-work-markers")
 }
 
 /// What the untasked lens declares about itself (SPEC-STEP1 4.1).

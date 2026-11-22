@@ -1,0 +1,2 @@
+### Added
+- `[untasked] require_open_work = true`: only a claim from a work-bearing document (roadmap, plan, todo, spec, decision, handoff; never a changelog, archive, guide, instructions file) that states open work (an unchecked box, or an open-work marker, and no standing-rule opener) is checked against the plan. Off by default, so the no-config baseline and the Gate A oracle are unchanged. Gate B round 3 option; the word lists are data files in the English pack.

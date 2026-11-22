@@ -59,6 +59,12 @@ pub struct ProjectConfig {
     pub contradiction_generic_df_percent: Option<u32>,
     /// `[contradiction] min_shared_tokens = N`: a pair needs at least N shared words that are not generic. Off by default.
     pub contradiction_min_shared_tokens: Option<usize>,
+    /// `[contradiction] strict = true`: full-claim sides, two exact non-generic shared words, the denied word exact in the positive side,
+    /// and a shared heading word. Off by default (docs/ROUND3-DESIGN.md).
+    pub contradiction_strict: bool,
+    /// `[untasked] require_open_work = true`: only a claim from a work-bearing document that states open work is checked against the plan.
+    /// Off by default (docs/ROUND3-DESIGN.md).
+    pub untasked_require_open_work: bool,
 }
 
 /// A project file that could not be read as configuration.
@@ -183,8 +189,16 @@ impl ProjectConfig {
                     "require_denied_token",
                     "generic_df_percent",
                     "min_shared_tokens",
+                    "strict",
                 ],
             )?;
+            cfg.contradiction_strict = match t.get("strict") {
+                Some(v) => match v.as_bool() {
+                    Some(b) => b,
+                    None => return err("`strict` in [contradiction] must be true or false"),
+                },
+                None => false,
+            };
             cfg.pairing_stopwords = strings(t, "pairing_stopwords", "[contradiction]")?;
             cfg.contradiction_skip_names = match t.get("skip_names") {
                 Some(v) => match v.as_bool() {
@@ -228,7 +242,18 @@ impl ProjectConfig {
             };
         }
         if let Some(t) = subtable(&root, "untasked")? {
-            only_keys(t, "[untasked]", &["skip_names", "only_kinds"])?;
+            only_keys(
+                t,
+                "[untasked]",
+                &["skip_names", "only_kinds", "require_open_work"],
+            )?;
+            cfg.untasked_require_open_work = match t.get("require_open_work") {
+                Some(v) => match v.as_bool() {
+                    Some(b) => b,
+                    None => return err("`require_open_work` in [untasked] must be true or false"),
+                },
+                None => false,
+            };
             cfg.untasked_only_kinds = strings(t, "only_kinds", "[untasked]")?
                 .iter()
                 .map(|n| kind_named(n))
@@ -480,5 +505,36 @@ skip = true
         ] {
             assert!(ProjectConfig::parse(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn round_3_options_are_off_by_default_and_must_be_bools() {
+        let c = ProjectConfig::parse("").unwrap();
+        assert!(!c.contradiction_strict && !c.untasked_require_open_work);
+        let c = ProjectConfig::parse(
+            "[contradiction]
+strict = true
+[untasked]
+require_open_work = true
+",
+        )
+        .unwrap();
+        assert!(c.contradiction_strict && c.untasked_require_open_work);
+        assert!(
+            ProjectConfig::parse(
+                "[contradiction]
+strict = 1
+"
+            )
+            .is_err()
+        );
+        assert!(
+            ProjectConfig::parse(
+                "[untasked]
+require_open_work = \"yes\"
+"
+            )
+            .is_err()
+        );
     }
 }

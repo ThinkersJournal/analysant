@@ -322,6 +322,7 @@ pub fn produce(root: &Path, opts: &Options) -> Result<Production, ProduceError> 
             MatchMode::TokenSubset,
             config.untasked_skip_names,
             &config.untasked_only_kinds,
+            config.untasked_require_open_work,
         );
         let owners: Owners = match &config.ownership {
             Some(cfg) => crate::ownership::owners(&Markdown, &en, cfg, &plan_lines, &files),
@@ -384,6 +385,7 @@ pub fn produce(root: &Path, opts: &Options) -> Result<Production, ProduceError> 
             require_denied_token: config.contradiction_require_denied_token,
             generic_df_percent: config.contradiction_generic_df_percent,
             min_shared_tokens: config.contradiction_min_shared_tokens,
+            strict: config.contradiction_strict,
         },
     )
     .map_err(|e| ProduceError(e.to_string()))?;

@@ -19,7 +19,7 @@ Predicted fix: standing rules (rule-openers, form), how-to (where, form), finish
 
 Measured false classes: generic words, bare labels, a denied token absent from the positive side, a cross-word family match. New option `[contradiction] strict = true` requires all of:
 
-1. both sides are full claims (at least 6 words and a finite verb), which removes bare labels and headings;
+1. both sides are full claims (a sentence or list item of at least 6 words), which removes bare labels, headings and table cells;
 2. the pair shares at least 2 non-generic words (generic as in round 1) and they match as exact words, so the family-prefix match is off;
 3. the denied word appears in the positive side as the same exact word (round 1's `require_denied_token`, tightened to exact);
 4. the two sides are in the same section or share a heading word.
@@ -38,3 +38,5 @@ Risk stated now: `strict` may shrink contradiction to a census below 5 judged (r
 - Projects (public, none seen in rounds 1-2), at origin/main fetched 2026-11-22: **sageant** 2bb77ec0724a, **fishstringer** 8c203f2ae6db, **lightbulb** 40fd2d37daf1. Plan: ROADMAP.md of each.
 - Config: round 1 and 2 options (`skip_names`; contradiction `require_denied_token`, `generic_df_percent = 20`, `min_shared_tokens = 2`; untasked `only_kinds = [directive, proposal, decision]`) plus `require_open_work` and `strict`.
 - Order: no-config populations first, then the tuned run; 7 per kind; blind verdicts by this lane and coderipper-c. A contradiction population under 5 judged is reported as a census, not a pass; any widening is a proposal to CireSnave.
+
+Change before any run (2026-11-22): the full-claim test originally said "and a finite verb"; the pack's finite-verb list is 37 entries built for another lens and misses ordinary verbs ("supports"), so the test is sentence/list-item form plus six words. Nothing has been run on any round 3 project.

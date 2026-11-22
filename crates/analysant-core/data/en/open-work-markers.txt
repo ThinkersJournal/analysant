@@ -1,0 +1,15 @@
+# analysant-lexicon v1 | pack: en | words that say work remains (quoted: the trailing space is part of the entry)
+todo
+to do
+not yet
+planned
+need to
+needs to
+needed
+"must "
+"will "
+"should "
+missing
+remaining
+"still "
+"to be "
