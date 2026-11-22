@@ -35,7 +35,7 @@ Risk stated now: `strict` may shrink contradiction to a census below 5 judged (r
 ## Fixed before any run (2026-11-22, PM OK relayed by pm-ants)
 
 - Seed: **20261124** (never used; 20261121-23 are spent).
-- Projects (public, none seen in rounds 1-2), at origin/main fetched 2026-11-22: **sageant** 2bb77ec0724a, **fishstringer** 8c203f2ae6db, **lightbulb** 40fd2d37daf1. Plan: ROADMAP.md of each.
+- Projects (public, none seen in rounds 1-2), at origin/main fetched 2026-11-22: **sageant** 2bb77ec0724a76562092418b34779f2b40502688, **fishstringer** 8c203f2ae6dc8cafbbf038d1a33354b7213db697, **lightbulb** 40fd2d37daf16c32ce6e39d35ba4a1dcec86a361 (the first commit of this note abbreviated fishstringer as `8c203f2ae6db`, a typo for `...6dc`; the project is the same, and the full SHAs are read back from the clones). Plan: ROADMAP.md of each.
 - Config: round 1 and 2 options (`skip_names`; contradiction `require_denied_token`, `generic_df_percent = 20`, `min_shared_tokens = 2`; untasked `only_kinds = [directive, proposal, decision]`) plus `require_open_work` and `strict`.
 - Order: no-config populations first, then the tuned run; 7 per kind; blind verdicts by this lane and coderipper-c. A contradiction population under 5 judged is reported as a census, not a pass; any widening is a proposal to CireSnave.
 
