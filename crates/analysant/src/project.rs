@@ -47,6 +47,10 @@ pub struct ProjectConfig {
     /// `[untasked] skip_names = true`: the untasked check sets aside Name-kind claims (bare identifiers, labels, crate names), which state no
     /// work. Off by default: the Gate A oracle runs (v4, v5) include Name-claim findings; this is a Gate B tuning option.
     pub untasked_skip_names: bool,
+    /// `[untasked] only_kinds = ["directive", ...]`: only claims of these kinds are checked against the plan; empty means every kind (the
+    /// default, which the Gate A oracle runs rely on). Kind names: directive, assertion, question, decision, definition, proposal,
+    /// report, name, description, unclassified.
+    pub untasked_only_kinds: Vec<analysant_core::Kind>,
     /// `[contradiction] skip_names = true`: Name-kind claims are not statements the contradiction lens pairs. Off by default (Gate A).
     pub contradiction_skip_names: bool,
     /// `[contradiction] require_denied_token = true`: a denial pairs only with a positive statement that carries the denied word. Off by default.
@@ -105,6 +109,33 @@ fn subtable<'a>(
             None => err(format!("`{name}` must be a table")),
         },
     }
+}
+
+/// The claim kind a config name stands for: the kind's own variant name, lower-cased (no word list lives in the engine).
+fn kind_named(name: &str) -> Result<analysant_core::Kind, ProjectError> {
+    use analysant_core::Kind;
+    [
+        Kind::Unclassified,
+        Kind::Directive,
+        Kind::Assertion,
+        Kind::Question,
+        Kind::Decision,
+        Kind::Definition,
+        Kind::Proposal,
+        Kind::Report,
+        Kind::Name,
+        Kind::Description,
+    ]
+    .into_iter()
+    .find(|k| format!("{k:?}").eq_ignore_ascii_case(name))
+    .map_or_else(
+        || {
+            err(format!(
+                "unknown claim kind `{name}` in [untasked] only_kinds"
+            ))
+        },
+        Ok,
+    )
 }
 
 impl ProjectConfig {
@@ -183,7 +214,11 @@ impl ProjectConfig {
             };
         }
         if let Some(t) = subtable(&root, "untasked")? {
-            only_keys(t, "[untasked]", &["skip_names"])?;
+            only_keys(t, "[untasked]", &["skip_names", "only_kinds"])?;
+            cfg.untasked_only_kinds = strings(t, "only_kinds", "[untasked]")?
+                .iter()
+                .map(|n| kind_named(n))
+                .collect::<Result<_, _>>()?;
             cfg.untasked_skip_names = match t.get("skip_names") {
                 Some(v) => match v.as_bool() {
                     Some(b) => b,
@@ -282,6 +317,40 @@ generic_df_percent = {bad}
             );
             assert!(ProjectConfig::parse(&t).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn untasked_only_kinds_is_empty_by_default_and_names_real_kinds() {
+        use analysant_core::Kind;
+        assert!(
+            ProjectConfig::parse("")
+                .unwrap()
+                .untasked_only_kinds
+                .is_empty()
+        );
+        let c = ProjectConfig::parse(
+            "[untasked]
+only_kinds = [\"directive\", \"proposal\"]
+",
+        )
+        .unwrap();
+        assert_eq!(c.untasked_only_kinds, [Kind::Directive, Kind::Proposal]);
+        assert!(
+            ProjectConfig::parse(
+                "[untasked]
+only_kinds = [\"order\"]
+"
+            )
+            .is_err()
+        );
+        assert!(
+            ProjectConfig::parse(
+                "[untasked]
+only_kinds = \"directive\"
+"
+            )
+            .is_err()
+        );
     }
 
     #[test]

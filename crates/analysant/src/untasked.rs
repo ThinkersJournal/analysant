@@ -76,10 +76,11 @@ pub fn directed_but_untasked(
     aliases: &AliasTable,
     mode: MatchMode,
 ) -> UntaskedRun {
-    directed_but_untasked_with(pack, corpus, plan_lines, aliases, mode, false)
+    directed_but_untasked_with(pack, corpus, plan_lines, aliases, mode, false, &[])
 }
 
-/// As `directed_but_untasked`; with `skip_names` a Name-kind claim is set aside like a claim with no key (it states no work).
+/// As `directed_but_untasked`; with `skip_names` a Name-kind claim is set aside like a claim with no key (it states no work), and a
+/// non-empty `only_kinds` sets aside every claim whose kind is not listed (descriptions and records of finished work state no task).
 pub fn directed_but_untasked_with(
     pack: &dyn LanguagePack,
     corpus: &Corpus,
@@ -87,9 +88,12 @@ pub fn directed_but_untasked_with(
     aliases: &AliasTable,
     mode: MatchMode,
     skip_names: bool,
+    only_kinds: &[analysant_core::Kind],
 ) -> UntaskedRun {
     let set_aside = |c: &analysant_core::Claim| {
-        c.normal.is_empty() || (skip_names && c.kind == analysant_core::Kind::Name)
+        c.normal.is_empty()
+            || (skip_names && c.kind == analysant_core::Kind::Name)
+            || (!only_kinds.is_empty() && !only_kinds.contains(&c.kind))
     };
     let claims: Vec<_> = corpus.claims().collect();
     let index = TermIndex::build(

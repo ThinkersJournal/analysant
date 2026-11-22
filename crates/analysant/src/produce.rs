@@ -321,6 +321,7 @@ pub fn produce(root: &Path, opts: &Options) -> Result<Production, ProduceError> 
             &aliases,
             MatchMode::TokenSubset,
             config.untasked_skip_names,
+            &config.untasked_only_kinds,
         );
         let owners: Owners = match &config.ownership {
             Some(cfg) => crate::ownership::owners(&Markdown, &en, cfg, &plan_lines, &files),
