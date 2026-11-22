@@ -380,6 +380,7 @@ pub fn produce(root: &Path, opts: &Options) -> Result<Production, ProduceError> 
         LogicalConfig {
             extra_pairing_stopwords: config.pairing_stopwords.clone(),
             skip_name_claims: config.contradiction_skip_names,
+            require_denied_token: config.contradiction_require_denied_token,
         },
     )
     .map_err(|e| ProduceError(e.to_string()))?;

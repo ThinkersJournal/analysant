@@ -83,6 +83,10 @@ pub struct Config {
     /// Leave Name-kind claims (a bare identifier, clause id or label) out of the statements: they assert nothing a denial could
     /// contradict. Off by default (the Gate A oracle runs include them); a Gate B tuning option.
     pub skip_name_claims: bool,
+    /// Pair a denial with a positive statement only when the positive statement's text carries the denied word (the word the
+    /// negation marker governs: "can't *run*", "no *spec*"). Off by default (the Gate A oracle runs predate it); a Gate B tuning
+    /// option for the named noise class "the denied token is absent from the positive side".
+    pub require_denied_token: bool,
 }
 
 /// What a statement does about its capability.
@@ -179,6 +183,7 @@ pub struct ContradictionLens<'a> {
     positive_subject_min: usize,
     subject_token_min_chars: usize,
     skip_name_claims: bool,
+    require_denied_token: bool,
 }
 
 type Key = (String, usize, String, usize);
@@ -215,6 +220,7 @@ impl<'a> ContradictionLens<'a> {
             positive_subject_min: p("positive_subject_min"),
             subject_token_min_chars: p("subject_token_min_chars"),
             skip_name_claims: config.skip_name_claims,
+            require_denied_token: config.require_denied_token,
         })
     }
 
@@ -266,6 +272,25 @@ impl<'a> ContradictionLens<'a> {
             }
         }
         (Polarity::Positive, None)
+    }
+
+    /// The content word a negation governs: the word after a refusal word (`no <capability>`), or the first non-stopword after the
+    /// marker phrase. `None` when there is none, or when it could never be a subject token (a pairing stopword, a digit word).
+    fn denied_token(&self, neg: &Statement) -> Option<String> {
+        let marker = neg.negated_by.as_deref()?;
+        let norm = self.pack.normalizer();
+        let prose = strip_backtick_spans(&norm.fold_case(&self.head_window(&neg.text)));
+        let word = if let Some(refusal) = marker.strip_suffix(" <capability>") {
+            self.refused_capability(&prose, refusal)?
+        } else {
+            let tokens = alnum_words(&prose);
+            let end = phrase_end(&tokens, marker)?;
+            tokens[end..]
+                .iter()
+                .find(|w| !norm.is_stopword(w))?
+                .to_string()
+        };
+        self.subject_tokens(&word).into_iter().next()
     }
 
     /// The capability a standalone refusal word refuses: the word after it that is neither a stopword
@@ -542,6 +567,17 @@ impl<'a> ContradictionLens<'a> {
                 if neg.file == pos.file {
                     continue;
                 }
+                if self.require_denied_token {
+                    if let Some(denied) = self.denied_token(neg) {
+                        let folded = self.pack.normalizer().fold_case(&pos.text);
+                        if !alnum_words(&folded)
+                            .iter()
+                            .any(|w| self.same_family(&denied, w))
+                        {
+                            continue;
+                        }
+                    }
+                }
                 let Some((shared, small_is_neg)) = self.shared_subject(&neg.subject, &pos.subject)
                 else {
                     continue;
@@ -760,6 +796,61 @@ mod tests {
             statement(&l, "b.md", 2, "Cancellation"),
         ];
         assert!(l.find_contradictions(&s, None).pairs.is_empty());
+    }
+
+    #[test]
+    fn require_denied_token_drops_a_pair_whose_positive_side_lacks_the_denied_word() {
+        let en = English::new();
+        let strict = ContradictionLens::new(
+            &en,
+            Config {
+                require_denied_token: true,
+                ..Config::default()
+            },
+        )
+        .expect("data");
+        let plain = lens(&en);
+        let mk = |l: &ContradictionLens<'_>, pos: &str| {
+            [
+                statement(l, "a.md", 1, "Scheduler cancellation cannot run"),
+                statement(l, "b.md", 2, pos),
+            ]
+        };
+        // The positive side never says "run": a shared topic, not a contradiction.
+        let absent = "Scheduler cancellation";
+        assert_eq!(
+            plain
+                .find_contradictions(&mk(&plain, absent), None)
+                .pairs
+                .len(),
+            1
+        );
+        assert!(
+            strict
+                .find_contradictions(&mk(&strict, absent), None)
+                .pairs
+                .is_empty()
+        );
+        // Positive control: when the positive side carries the denied word, it still pairs.
+        let present = "Scheduler cancellation can run";
+        assert_eq!(
+            strict
+                .find_contradictions(&mk(&strict, present), None)
+                .pairs
+                .len(),
+            1
+        );
+        // A stance-word denial ("is not supported") has no content denied word, so it is never filtered.
+        let s = [
+            statement(
+                &strict,
+                "a.md",
+                1,
+                "Scheduler cancellation is not supported",
+            ),
+            statement(&strict, "b.md", 2, absent),
+        ];
+        assert_eq!(strict.find_contradictions(&s, None).pairs.len(), 1);
     }
 
     #[test]

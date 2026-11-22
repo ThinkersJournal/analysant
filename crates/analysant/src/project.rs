@@ -49,6 +49,8 @@ pub struct ProjectConfig {
     pub untasked_skip_names: bool,
     /// `[contradiction] skip_names = true`: Name-kind claims are not statements the contradiction lens pairs. Off by default (Gate A).
     pub contradiction_skip_names: bool,
+    /// `[contradiction] require_denied_token = true`: a denial pairs only with a positive statement that carries the denied word. Off by default.
+    pub contradiction_require_denied_token: bool,
 }
 
 /// A project file that could not be read as configuration.
@@ -137,12 +139,27 @@ impl ProjectConfig {
             });
         }
         if let Some(t) = subtable(&root, "contradiction")? {
-            only_keys(t, "[contradiction]", &["pairing_stopwords", "skip_names"])?;
+            only_keys(
+                t,
+                "[contradiction]",
+                &["pairing_stopwords", "skip_names", "require_denied_token"],
+            )?;
             cfg.pairing_stopwords = strings(t, "pairing_stopwords", "[contradiction]")?;
             cfg.contradiction_skip_names = match t.get("skip_names") {
                 Some(v) => match v.as_bool() {
                     Some(b) => b,
                     None => return err("`skip_names` in [contradiction] must be true or false"),
+                },
+                None => false,
+            };
+            cfg.contradiction_require_denied_token = match t.get("require_denied_token") {
+                Some(v) => match v.as_bool() {
+                    Some(b) => b,
+                    None => {
+                        return err(
+                            "`require_denied_token` in [contradiction] must be true or false",
+                        );
+                    }
                 },
                 None => false,
             };
@@ -189,6 +206,32 @@ skip_names = true
             ProjectConfig::parse(
                 "[contradiction]
 skip_names = 1
+"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn contradiction_require_denied_token_is_off_by_default_and_must_be_a_bool() {
+        assert!(
+            !ProjectConfig::parse("")
+                .unwrap()
+                .contradiction_require_denied_token
+        );
+        assert!(
+            ProjectConfig::parse(
+                "[contradiction]
+require_denied_token = true
+"
+            )
+            .unwrap()
+            .contradiction_require_denied_token
+        );
+        assert!(
+            ProjectConfig::parse(
+                "[contradiction]
+require_denied_token = 2
 "
             )
             .is_err()
