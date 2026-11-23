@@ -91,3 +91,23 @@ A third lane (`coderipper-c`), given only the 21 blind rows of runs 1 and 2 (run
 | 5 | untasked/untasked | httpant | CONTRIBUTING.md:57 | FALSE | how-to instruction in a guide, not project work | A CONTRIBUTING step for adding an adapter; a how-to, not project work. | FALSE |
 | 6 | untasked/untasked | httpant | CONTRIBUTING.md:34 | FALSE | how-to instruction in a guide, not project work | A CONTRIBUTING step, run clippy; a how-to. | FALSE |
 | 7 | untasked/untasked | antspawn | docs/DESIGN.md:6 | FALSE | description of behaviour, not a work item | A design line defining Needs; describes the design, no task. | FALSE |
+
+## Run 4: round 4 (design `docs/GATE-B-ROUND4-DESIGN.md`; run 3's section is added when its second-judge file arrives)
+
+- Seed 20261125 (not reused). Tool: `analysant` at 3f96948 (release build; `live_open_boxes`, `minimal_pair`, both off by default). Projects (public, none seen in runs 0-3), clean clones at: auth-framework 0cec44640f3728cfd3c6b512ae3693636b179087; wasm-sandbox 8f37a131383170b9e651b0574dbcc1d7acd08dd3; mlmf f47401f43c889e243a853fbc7458c0d40dbd2901. Plan: ROADMAP.md each. Config: `[untasked] skip_names, live_open_boxes`; `[contradiction] skip_names, generic_df_percent = 20, minimal_pair`. Two runs per project were byte-identical.
+- No-config populations (first run): untasked and contradiction 13844 and 1180 rows together by a text match on the kind column (a rough count; the per-kind counts command was run only on the tuned config).
+- Tuned: contradiction **0** findings on all three projects (a census of 0: cannot pass, below the 5-judged floor; predicted in the design note); untasked **167** (auth-framework 29, wasm-sandbox 16, mlmf 122).
+- Sample: the pre-registered cap of 3 rows per project (the first 3 of each project's own seeded order), then the seeded order of those 9 (`reading=census`, 9 rows). Judged 7, true 0, stopped at the 7th false (`pass-line-unreachable`). One judge so far: the second judge's file has not arrived, and the stopped-kind rule needs it.
+- untasked/untasked classes: stale wish list covered by the design roadmap x3 (one file); item of the long-form roadmap that the plan names as its source x2; step of a finished plan (box left unticked) x1; template checklist, not project work x1. Not seen this round: standing rule, how-to, changelog record, behaviour description, superseded document, bare label (the round-3 filters held).
+
+| Pos | Project | File:line | Verdict | Class | Reason |
+|---|---|---|---|---|---|
+| 1 | mlmf | docs/superpowers/plans/2026-09-03-mlmf-meta.md:1636 | FALSE | step of a finished plan (box left unticked) | crates/mlmf-meta/src exists (4 files); the plan has 0 of 35 boxes ticked. |
+| 2 | wasm-sandbox | docs/api/API_IMPROVEMENTS.md:475 | FALSE | stale wish list covered by the design roadmap | A v0.3.0 list (crate is 0.7.7), last touched 2025-07, 0 of 16 ticked; docs/design/roadmap.md lists multi-tenant isolation. |
+| 3 | wasm-sandbox | docs/api/API_IMPROVEMENTS.md:476 | FALSE | stale wish list covered by the design roadmap | Same list; connection pooling. |
+| 4 | wasm-sandbox | docs/api/API_IMPROVEMENTS.md:480 | FALSE | stale wish list covered by the design roadmap | Same list; docs/design/roadmap.md has a JIT Compilation Backend section. |
+| 5 | auth-framework | .github/PULL_REQUEST_TEMPLATE.md:39 | FALSE | template checklist, not project work | A PR template item every author ticks. |
+| 6 | auth-framework | docs/ROADMAP.md:294 | FALSE | item of the long-form roadmap that the plan names as its source | ROADMAP.md is the short register and names docs/ROADMAP.md as the long-form plan; an optional community SurrealDB item is not a register row. |
+| 7 | auth-framework | docs/ROADMAP.md:478 | FALSE | item of the long-form roadmap that the plan names as its source | Go SDK is a long-form Ecosystem Expansion wish; the changelog shows the Go and Java SDK directories were deliberately called "coming soon". |
+
+Reading: rows 6 and 7 are the two the judge found hardest (the item is real and open; the plan is a register that says it is not the place for it). A second judge may rule them differently; they are the only rows where a true verdict is arguable.
