@@ -11,6 +11,8 @@ pub struct LiveContext {
     names: HashSet<String>,
     closed: HashMap<String, bool>,
     plan: Vec<HashSet<String>>,
+    /// Extensions of the tracked files: a token ending in one of these names a file.
+    extensions: HashSet<String>,
 }
 
 fn words(text: &str) -> Vec<String> {
@@ -48,6 +50,11 @@ impl LiveContext {
                 .collect(),
             closed,
             plan,
+            extensions: tracked
+                .iter()
+                .filter_map(|p| p.rsplit_once('.'))
+                .map(|(_, e)| e.to_lowercase())
+                .collect(),
         }
     }
 
@@ -93,6 +100,39 @@ impl LiveContext {
         true
     }
 
+    /// `absent_artifact` (the round 5 narrow check): an unticked box in a live document outside the non-work documents that names an
+    /// artifact absent from the tree. A path artifact is absent when neither the path nor its file name is tracked; a symbol artifact
+    /// (a backticked identifier) is absent when `symbol_absent` says so. A step naming no artifact is not a finding.
+    pub fn keeps_absent_artifact(
+        &self,
+        pack: &dyn LanguagePack,
+        path: &str,
+        text: &str,
+        symbol_absent: &dyn Fn(&str) -> bool,
+    ) -> bool {
+        let lex = pack.lexicons();
+        let lower = text.trim_start_matches(['-', '*', '+', ' ']).to_lowercase();
+        if !lex
+            .entries("checkbox-openers")
+            .first()
+            .is_some_and(|b| lower.starts_with(b.as_str()))
+        {
+            return false;
+        }
+        let path_l = path.replace('\\', "/").to_lowercase();
+        if lex
+            .entries("non-work-documents")
+            .iter()
+            .any(|e| path_l.contains(e.as_str()))
+            || self.closed.get(path).copied().unwrap_or(false)
+        {
+            return false;
+        }
+        path_artifacts(&lower, &self.extensions).iter().any(|t| {
+            !self.paths.contains(t) && !self.names.contains(t.rsplit('/').next().unwrap_or(t))
+        }) || symbol_artifacts(text).iter().any(|s| symbol_absent(s))
+    }
+
     /// A token of the item that looks like a path or file name (it holds `/`, or ends in a dot and 1-5 letters or digits) and
     /// resolves to a tracked path or to the name of one.
     fn names_existing_file(&self, text: &str) -> bool {
@@ -103,6 +143,44 @@ impl LiveContext {
         .filter(|t| t.contains('/') || has_extension(t))
         .any(|t| self.paths.contains(t) || self.names.contains(t.rsplit('/').next().unwrap_or(t)))
     }
+}
+
+/// Tokens of a step that name a file: they hold `/`, or end in a known file extension.
+fn path_artifacts(lower: &str, extensions: &HashSet<String>) -> Vec<String> {
+    lower
+        .split(|c: char| {
+            c.is_whitespace() || matches!(c, '`' | '(' | ')' | ',' | ';' | '"' | '\'' | '[' | ']')
+        })
+        .map(|t| t.trim_matches(['.', ':', '*']).trim_start_matches("./"))
+        .filter(|t| {
+            !t.contains("://")
+                && !t.starts_with('/')
+                && ((t.contains('/') && t.chars().any(|c| c.is_alphabetic()))
+                    || t.rsplit_once('.')
+                        .is_some_and(|(stem, ext)| !stem.is_empty() && extensions.contains(ext)))
+        })
+        .map(str::to_string)
+        .collect()
+}
+
+/// Backticked identifiers that look like code (`snake_case`, `a::b`, `camelCase`), not paths, words or commands.
+fn symbol_artifacts(text: &str) -> Vec<String> {
+    text.split('`')
+        .skip(1)
+        .step_by(2)
+        .filter(|s| {
+            s.len() >= 4
+                && !s.contains('/')
+                && s.chars()
+                    .all(|c| c.is_alphanumeric() || c == '_' || c == ':')
+                && (s.contains('_')
+                    || s.matches(':').count() >= 2
+                    || s.chars()
+                        .zip(s.chars().skip(1))
+                        .any(|(a, b)| a.is_lowercase() && b.is_uppercase()))
+        })
+        .map(str::to_string)
+        .collect()
 }
 
 fn has_extension(t: &str) -> bool {
@@ -221,6 +299,71 @@ mod tests {
             Some("does not"),
             "The job scheduler supports streaming responses.",
             |neg_side| neg_side
+        ));
+    }
+
+    #[test]
+    fn absent_artifact_fires_only_for_a_live_unticked_step_naming_a_missing_artifact() {
+        let en = English::new();
+        let tracked: BTreeSet<&str> = ["src/api/chat.rs", "docs/plan.md"].into_iter().collect();
+        let files = vec![
+            ("docs/plan.md".to_string(), "# Plan\n- [ ] x".to_string()),
+            (
+                "docs/old.md".to_string(),
+                "# Old plan (superseded)\n".to_string(),
+            ),
+        ];
+        let ctx = LiveContext::new(&en, &tracked, &files, &[]);
+        let none_missing = |_: &str| false;
+        let all_missing = |_: &str| true;
+        let fires = |p: &str, t: &str, sym_absent: &dyn Fn(&str) -> bool| {
+            ctx.keeps_absent_artifact(&en, p, t, sym_absent)
+        };
+        // A step naming a missing file in a live plan fires.
+        assert!(fires(
+            "docs/plan.md",
+            "- [ ] add `src/api/export.rs`",
+            &none_missing
+        ));
+        // A step naming an existing file (by path or by bare name) does not.
+        assert!(!fires(
+            "docs/plan.md",
+            "- [ ] extend `src/api/chat.rs`",
+            &none_missing
+        ));
+        assert!(!fires(
+            "docs/plan.md",
+            "- [ ] extend chat.rs",
+            &none_missing
+        ));
+        // The same missing-file step in a superseded document does not.
+        assert!(!fires(
+            "docs/old.md",
+            "- [ ] add `src/api/export.rs`",
+            &none_missing
+        ));
+        // A ticked box, or a step naming no artifact, does not.
+        assert!(!fires(
+            "docs/plan.md",
+            "- [x] add `src/api/export.rs`",
+            &none_missing
+        ));
+        assert!(!fires("docs/plan.md", "- [ ] improve docs", &all_missing));
+        // A missing symbol fires; a present one does not; a plain word or version is no artifact.
+        assert!(fires(
+            "docs/plan.md",
+            "- [ ] implement `export_metrics`",
+            &all_missing
+        ));
+        assert!(!fires(
+            "docs/plan.md",
+            "- [ ] implement `export_metrics`",
+            &none_missing
+        ));
+        assert!(!fires(
+            "docs/plan.md",
+            "- [ ] bump to v1.2 e.g. `cache`",
+            &all_missing
         ));
     }
 

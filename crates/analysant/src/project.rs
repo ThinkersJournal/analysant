@@ -69,6 +69,8 @@ pub struct ProjectConfig {
     pub contradiction_minimal_pair: bool,
     /// `[untasked] live_open_boxes = true`: only an unticked box in a live document that names no existing file and is not half-covered by a plan line (Gate B round 4).
     pub untasked_live_open_boxes: bool,
+    /// `[untasked] absent_artifact = true`: only an unticked box in a live document that names a file or symbol absent from the tree (Gate B round 5, the narrow check).
+    pub untasked_absent_artifact: bool,
 }
 
 /// A project file that could not be read as configuration.
@@ -262,8 +264,16 @@ impl ProjectConfig {
                     "only_kinds",
                     "require_open_work",
                     "live_open_boxes",
+                    "absent_artifact",
                 ],
             )?;
+            cfg.untasked_absent_artifact = match t.get("absent_artifact") {
+                Some(v) => match v.as_bool() {
+                    Some(b) => b,
+                    None => return err("`absent_artifact` in [untasked] must be true or false"),
+                },
+                None => false,
+            };
             cfg.untasked_live_open_boxes = match t.get("live_open_boxes") {
                 Some(v) => match v.as_bool() {
                     Some(b) => b,

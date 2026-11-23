@@ -311,7 +311,9 @@ pub fn produce(root: &Path, opts: &Options) -> Result<Production, ProduceError> 
     let mut rows: Vec<Row> = Vec::new();
     let mut counts: BTreeMap<(String, String), usize> = BTreeMap::new();
 
-    let live = (config.untasked_live_open_boxes || config.contradiction_minimal_pair)
+    let live = (config.untasked_live_open_boxes
+        || config.untasked_absent_artifact
+        || config.contradiction_minimal_pair)
         .then(|| crate::round4::LiveContext::new(&en, &tracked, &files, &plan_lines));
     let untasked_status = if plan_lines.is_empty() {
         LensStatus::NotAnalysed("no plan given: use --plan or [corpus] plan_files".into())
@@ -336,6 +338,20 @@ pub fn produce(root: &Path, opts: &Options) -> Result<Production, ProduceError> 
             part.findings.retain(|(i, f)| {
                 let (doc, claim) = claims[*i];
                 live.keeps(&en, &doc.path, &claim.text, &f.search.query.key)
+            });
+        }
+        if let Some(live) = live.as_ref().filter(|_| config.untasked_absent_artifact) {
+            // A symbol is absent when no tracked non-markdown file contains it (the step itself names it) (`git grep -F`: exit 1 is no match, anything else is "present" so a failure never fires).
+            let symbol_absent = |s: &str| {
+                Command::new("git")
+                    .current_dir(root)
+                    .args(["grep", "-q", "-F", "-e", s, "--", ":!*.md"])
+                    .output()
+                    .is_ok_and(|o| o.status.code() == Some(1))
+            };
+            part.findings.retain(|(i, _)| {
+                let (doc, claim) = claims[*i];
+                live.keeps_absent_artifact(&en, &doc.path, &claim.text, &symbol_absent)
             });
         }
         for (i, f) in &part.findings {

@@ -1,0 +1,2 @@
+### Changed
+- The contradiction lens is **retired as a shipped feature** (CireSnave, board 496: option C). Gate B rounds 3 and 4 judged its tuned output 0 true of every judged row; no accuracy is claimed for it and it belongs in no default configuration. Its code, options (`strict`, `minimal_pair`, ...) and the Gate B report stay in the repository, and the Gate A oracle (which reproduces the reference spike) is unchanged. No further tuning.
