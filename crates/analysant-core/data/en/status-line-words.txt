@@ -1,0 +1,2 @@
+# analysant-lexicon v1 | pack: en | words that mark a line as a document status line (Gate B round 4)
+status

@@ -65,6 +65,10 @@ pub struct ProjectConfig {
     /// `[untasked] require_open_work = true`: only a claim from a work-bearing document that states open work is checked against the plan.
     /// Off by default (docs/ROUND3-DESIGN.md).
     pub untasked_require_open_work: bool,
+    /// `[contradiction] minimal_pair = true`: only a pair with the same head, verb and object, flipped by one negation (Gate B round 4).
+    pub contradiction_minimal_pair: bool,
+    /// `[untasked] live_open_boxes = true`: only an unticked box in a live document that names no existing file and is not half-covered by a plan line (Gate B round 4).
+    pub untasked_live_open_boxes: bool,
 }
 
 /// A project file that could not be read as configuration.
@@ -190,8 +194,16 @@ impl ProjectConfig {
                     "generic_df_percent",
                     "min_shared_tokens",
                     "strict",
+                    "minimal_pair",
                 ],
             )?;
+            cfg.contradiction_minimal_pair = match t.get("minimal_pair") {
+                Some(v) => match v.as_bool() {
+                    Some(b) => b,
+                    None => return err("`minimal_pair` in [contradiction] must be true or false"),
+                },
+                None => false,
+            };
             cfg.contradiction_strict = match t.get("strict") {
                 Some(v) => match v.as_bool() {
                     Some(b) => b,
@@ -245,8 +257,20 @@ impl ProjectConfig {
             only_keys(
                 t,
                 "[untasked]",
-                &["skip_names", "only_kinds", "require_open_work"],
+                &[
+                    "skip_names",
+                    "only_kinds",
+                    "require_open_work",
+                    "live_open_boxes",
+                ],
             )?;
+            cfg.untasked_live_open_boxes = match t.get("live_open_boxes") {
+                Some(v) => match v.as_bool() {
+                    Some(b) => b,
+                    None => return err("`live_open_boxes` in [untasked] must be true or false"),
+                },
+                None => false,
+            };
             cfg.untasked_require_open_work = match t.get("require_open_work") {
                 Some(v) => match v.as_bool() {
                     Some(b) => b,

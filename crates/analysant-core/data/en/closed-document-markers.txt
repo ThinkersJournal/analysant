@@ -1,0 +1,10 @@
+# analysant-lexicon v1 | pack: en | words in a document heading or status line that say the document is no longer live work (Gate B round 4)
+superseded
+obsolete
+deprecated
+archived
+complete
+completed
+done
+shipped
+historical

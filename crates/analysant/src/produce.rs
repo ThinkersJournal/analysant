@@ -311,6 +311,8 @@ pub fn produce(root: &Path, opts: &Options) -> Result<Production, ProduceError> 
     let mut rows: Vec<Row> = Vec::new();
     let mut counts: BTreeMap<(String, String), usize> = BTreeMap::new();
 
+    let live = (config.untasked_live_open_boxes || config.contradiction_minimal_pair)
+        .then(|| crate::round4::LiveContext::new(&en, &tracked, &files, &plan_lines));
     let untasked_status = if plan_lines.is_empty() {
         LensStatus::NotAnalysed("no plan given: use --plan or [corpus] plan_files".into())
     } else {
@@ -328,8 +330,14 @@ pub fn produce(root: &Path, opts: &Options) -> Result<Production, ProduceError> 
             Some(cfg) => crate::ownership::owners(&Markdown, &en, cfg, &plan_lines, &files),
             None => Owners::new(),
         };
-        let part = partition_owned(&corpus, &run, &owners);
+        let mut part = partition_owned(&corpus, &run, &owners);
         let claims: Vec<_> = corpus.claims().collect();
+        if let Some(live) = live.as_ref().filter(|_| config.untasked_live_open_boxes) {
+            part.findings.retain(|(i, f)| {
+                let (doc, claim) = claims[*i];
+                live.keeps(&en, &doc.path, &claim.text, &f.search.query.key)
+            });
+        }
         for (i, f) in &part.findings {
             let (doc, claim) = claims[*i];
             let mut search = format!(
@@ -390,7 +398,26 @@ pub fn produce(root: &Path, opts: &Options) -> Result<Production, ProduceError> 
     )
     .map_err(|e| ProduceError(e.to_string()))?;
     let statements = contradiction::statements(&corpus, &lens);
-    let found = lens.find_contradictions(&statements, store.as_ref());
+    let mut found = lens.find_contradictions(&statements, store.as_ref());
+    if config.contradiction_minimal_pair {
+        if let Some(live) = &live {
+            found.pairs.retain(|c| {
+                crate::round4::minimal_pair(
+                    &en,
+                    &c.negated.text,
+                    c.negated_by.as_deref(),
+                    &c.positive.text,
+                    |neg_side| {
+                        !live.is_closed_doc(if neg_side {
+                            &c.negated.file
+                        } else {
+                            &c.positive.file
+                        })
+                    },
+                )
+            });
+        }
+    }
     let contradiction_lens = contradiction::spec().id;
     for c in &found.pairs {
         let key = format!("{}|{}", c.negated.id, c.positive.id);

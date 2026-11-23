@@ -37,3 +37,10 @@ Predicted effect: removes every one of the 18 judged contradiction rows I have (
 - **Procedure:** no-config populations counted first; then the tuned run; 7 per kind (or the census if under 7); the sample takes at most 3 rows per project, so one repository cannot be the whole sample (run 3 untasked was 334 of 337 lightbulb rows); blind verdicts by this lane and coderipper-c on the same rubric.
 - **Success line unchanged:** at least 80% true over at least 5 judged, blind second judge. A kind under 5 judged is reported as a census that cannot pass. One round, then report; failing means Stop, back to CireSnave.
 - Lane-days used: 2 of 30 (counting this run: 3).
+
+## Implementation notes (2026-11-23, before any run)
+
+Code: `crates/analysant/src/round4.rs`, applied as post-filters in `produce.rs` (the lenses and Gate A are untouched); config keys `[untasked] live_open_boxes`, `[contradiction] minimal_pair`, both default off; new lexicons `closed-document-markers`, `clause-joiners`, `status-line-words`. fmt, clippy `-D warnings` and `cargo test --workspace` green. Two deviations from the text above, stated before the run:
+
+- Item 3 (not shown done by the tree) checks file paths and file names only (a token with `/` or a short extension that is a tracked path or the name of one); the "command word" case is not implemented.
+- The minimal pair compares verbs by prefix (one form begins with the other, shorter at least 3 letters), not by stem; the live-document test uses the same closed-document markers as untasked.
