@@ -111,3 +111,26 @@ A third lane (`coderipper-c`), given only the 21 blind rows of runs 1 and 2 (run
 | 7 | auth-framework | docs/ROADMAP.md:478 | FALSE | item of the long-form roadmap that the plan names as its source | Go SDK is a long-form Ecosystem Expansion wish; the changelog shows the Go and Java SDK directories were deliberately called "coming soon". |
 
 Reading: rows 6 and 7 are the two the judge found hardest (the item is real and open; the plan is a register that says it is not the place for it). A second judge may rule them differently; they are the only rows where a true verdict is arguable.
+
+## Run 3: round 3 (design `docs/ROUND3-DESIGN.md`)
+
+- Seed 20261124 (not reused). Projects: sageant 2bb77ec0724a76562092418b34779f2b40502688; fishstringer 8c203f2ae6dc8cafbbf038d1a33354b7213db697; lightbulb 40fd2d37daf16c32ce6e39d35ba4a1dcec86a361. Plan: ROADMAP.md each. Config: rounds 1 and 2 plus `[untasked] require_open_work`, `[contradiction] strict`. No-config populations: contradiction 1273, untasked about 10000. Tuned: untasked 337 (334 lightbulb, 3 fishstringer, 0 sageant); contradiction 2 (a census, below the 5-judged floor: cannot pass).
+- **Analysant lane: 0 TRUE of 7 untasked (stopped at the 7th false), 0 of 2 contradiction. Second judge (coderipper-c, blind, rows keyed by sheet ordinal; ids mapped here from the sample file): 2 TRUE of 7 untasked (ordinals 4 and 5), 0 of 2 contradiction.** The two judges disagree on exactly those two rows. Verdict agreement is 7 of 9 (77.8%), below the 80% stopped-kind threshold. Even on the second judge's verdicts 2 of 9 is 22% true, far under the 80% line, so no kind cleared in either reading.
+
+| Pos | Project | File:line | Analysant | Class (analysant) | coderipper-c |
+|---|---|---|---|---|---|
+| 1 | lightbulb | docs/CANDLE_CUDA_VMM_SPEC.md:473 | FALSE | plan already covers it under other wording | FALSE (tracked at ROADMAP.md:4191, a wording miss) |
+| 2 | lightbulb | docs/CANDLE_CUDA_VMM_SPEC.md:390 | FALSE | design constraint, not a work item | FALSE |
+| 3 | lightbulb | docs/superpowers/plans/2026-08-05-engine-wiring.md:441 | FALSE | step of a finished plan (box left unticked) | FALSE |
+| 4 | lightbulb | V1_ROADMAP.md:93 | FALSE | superseded document | **TRUE**: the demo-setup.ps1 migrations item; `demo-setup` has 0 hits in tests/ and src/ (control: DEMO.md finds it) |
+| 5 | lightbulb | V1_ROADMAP.md:345 | FALSE | superseded document | **TRUE as a stale item**, not as missing work: "Track actual memory usage" is already done in memory_aware_scheduler.rs; coderipper-c calls it arguable by the rubric |
+| 6 | lightbulb | docs/superpowers/plans/2026-08-08-chat-template-resolution.md:1321 | FALSE | step of a finished plan (box left unticked) | FALSE |
+| 7 | lightbulb | docs/superpowers/plans/2026-08-08-chat-template-resolution.md:559 | FALSE | step of a finished plan (box left unticked) | FALSE |
+| C1 | lightbulb | FLASHATTENTION_INTEGRATION | FALSE | sides agree | FALSE |
+| C2 | lightbulb | known limitation vs Future Enhancements (M6) | FALSE | sides agree | FALSE |
+
+Reading: both TRUE verdicts are on V1_ROADMAP.md, a document that opens with SUPERSEDED. Analysant judged an open box in a superseded document as provenance, not live work; coderipper-c judged a stale or unmade item in it as a real thing a reader learns (the rubric's "stale" clause). The rubric does not decide this, and it is a point for CireSnave if the check is kept.
+
+## Run 4: second judge
+
+coderipper-c judged rows 1-7 all FALSE, but read the analysant verdicts file first (it sat beside the sheet in the same directory), so that agreement is **contaminated, not independent**. A blind pass needs a directory holding only the sheet and clones.
