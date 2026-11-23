@@ -134,3 +134,10 @@ Reading: both TRUE verdicts are on V1_ROADMAP.md, a document that opens with SUP
 ## Run 4: second judge
 
 coderipper-c judged rows 1-7 all FALSE, but read the analysant verdicts file first (it sat beside the sheet in the same directory), so that agreement is **contaminated, not independent**. A blind pass needs a directory holding only the sheet and clones.
+
+## Run 5: round 5, the narrow check (design `docs/GATE-B-ROUND5-DESIGN.md`)
+
+- Seed 20261126 (not reused; never drawn on, there being nothing to sample). Tool: `analysant` at 24a82a5 (release build; `[untasked] absent_artifact = true`, every other option off). Projects (public, none seen in runs 0-4), clean clones at: json-mcp-server 2a866e3e9efa1d2eb1ed99c6542e51945fec8e4b; commy bd5e51b0e8b78e003e3bd8f09e44a6de48bafeb2; agentlife dce80aa76216eb5b0db7f4b537c95d309920716d. Plan: ROADMAP.md each. Two runs per project were byte-identical (`worktree: dirty` is only the untracked `.analysant/project.toml`).
+- **Result: 0 untasked findings on all three projects (a census of 0).** Nothing was sampled, judged or sent to a second judge, and the 80 percent line over at least 5 judged cannot be met by an empty set: **the round does not pass.** Recall is not measured.
+- What the zero rests on (counts by `git grep` on the same revisions): unticked boxes in tracked markdown: json-mcp-server 61 (DEPLOYMENT_STATUS.md 5, PACKAGE_SUBMISSION_CHECKLIST.md 6, PACKAGE_TESTING_GUIDE.md 50), commy 0, agentlife 0. Positive control for the box count: the same pattern finds 61 in json-mcp-server and 39 ticked boxes, so the query works; the check did not fire on any of the 61 (none names an absent file or symbol that the filters kept; the steps are release-checklist items such as "Zero production failures reported"). The check's own tests show it fires on a missing file in a live plan.
+- Reading: the deterministic part is sound but finds nothing on these three projects, because real plans rarely put a missing file or symbol in an unticked box. Per the TASK, the next step is the model option (board item B), not another filter round.
