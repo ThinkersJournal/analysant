@@ -120,17 +120,22 @@ impl LiveContext {
             return false;
         }
         let path_l = path.replace('\\', "/").to_lowercase();
-        if lex
-            .entries("non-work-documents")
+        if ["non-work-documents", "template-documents"]
             .iter()
-            .any(|e| path_l.contains(e.as_str()))
+            .any(|l| lex.entries(l).iter().any(|e| path_l.contains(e.as_str())))
             || self.closed.get(path).copied().unwrap_or(false)
+            || lex
+                .entries("optional-step-markers")
+                .iter()
+                .any(|m| lower.contains(m.as_str()))
         {
             return false;
         }
         path_artifacts(&lower, &self.extensions).iter().any(|t| {
             !self.paths.contains(t) && !self.names.contains(t.rsplit('/').next().unwrap_or(t))
-        }) || symbol_artifacts(text).iter().any(|s| symbol_absent(s))
+        }) || symbol_artifacts(text)
+            .iter()
+            .any(|s| symbol_absent(s.rsplit_once(':').map_or(s.as_str(), |(_, last)| last)))
     }
 
     /// A token of the item that looks like a path or file name (it holds `/`, or ends in a dot and 1-5 letters or digits) and
@@ -155,6 +160,10 @@ fn path_artifacts(lower: &str, extensions: &HashSet<String>) -> Vec<String> {
         .filter(|t| {
             !t.contains("://")
                 && !t.starts_with('/')
+                && !t.starts_with('~')
+                && !t.starts_with('$')
+                && !t.starts_with('%')
+                && !t.contains(":/")
                 && ((t.contains('/') && t.chars().any(|c| c.is_alphabetic()))
                     || t.rsplit_once('.')
                         .is_some_and(|(stem, ext)| !stem.is_empty() && extensions.contains(ext)))
@@ -364,6 +373,94 @@ mod tests {
             "docs/plan.md",
             "- [ ] bump to v1.2 e.g. `cache`",
             &all_missing
+        ));
+    }
+
+    /// Census 497A false classes (docs/GATE-B-CENSUS-497A.md), one red-first test each; every census false positive is quoted.
+    #[test]
+    fn drift_skips_the_census_false_classes() {
+        let en = English::new();
+        let tracked: BTreeSet<&str> = ["docs/plan.md"].into_iter().collect();
+        let files = vec![(
+            "docs/plan.md".to_string(),
+            "# Plan
+- [ ] x"
+                .to_string(),
+        )];
+        let ctx = LiveContext::new(&en, &tracked, &files, &[]);
+        let none_missing = |_: &str| false;
+        let fires = |p: &str, t: &str, sym_absent: &dyn Fn(&str) -> bool| {
+            ctx.keeps_absent_artifact(&en, p, t, sym_absent)
+        };
+        // Control: the same shape of step fires in a plain plan.
+        assert!(fires(
+            "docs/plan.md",
+            "- [ ] Add `src/export.rs` for the exporter",
+            &none_missing
+        ));
+        // A PR template or other checklist file is not a plan (auth-framework PULL_REQUEST_TEMPLATE.md).
+        for p in [
+            ".github/PULL_REQUEST_TEMPLATE.md",
+            ".github/ISSUE_TEMPLATE/bug.md",
+            "docs/release-checklist.md",
+        ] {
+            assert!(
+                !fires(
+                    p,
+                    "- [ ] Add `src/export.rs` for the exporter",
+                    &none_missing
+                ),
+                "{p}"
+            );
+        }
+        // An optional step (fuel "(Optional, local GPU only) Mamba decode bench").
+        assert!(!fires(
+            "docs/plan.md",
+            "- [ ] **Step 3: (Optional, local GPU only) bench.** run `benches/decode.rs`. Skip if no device",
+            &none_missing
+        ));
+        // A TDD red step expects the artifact to be missing (fuel "Run, watch fail ... Expected: FAIL").
+        assert!(!fires(
+            "docs/plan.md",
+            "- [ ] **Step 3: Run, watch fail.** Expected: FAIL (`Tensor::scan_builder` undefined).",
+            &|_: &str| true
+        ));
+        // A path outside the repository is scratch, not a tracked artifact (KISS `C:/Projects/KISS/.superpowers/sdd/progress.md`).
+        for t in [
+            "- [ ] Update the ledger at `C:/Projects/KISS/.superpowers/sdd/progress.md` with outcomes",
+            "- [ ] Copy to `~/notes/progress.md`",
+            "- [ ] Write `/tmp/out/progress.md`",
+        ] {
+            assert!(!fires("docs/plan.md", t, &none_missing), "{t}");
+        }
+    }
+
+    /// fuel `Tensor::scan`: a qualified Rust path never appears literally in source, so it is searched by its final segment.
+    #[test]
+    fn a_qualified_symbol_is_searched_by_its_final_segment() {
+        let en = English::new();
+        let tracked: BTreeSet<&str> = ["docs/plan.md"].into_iter().collect();
+        let files = vec![(
+            "docs/plan.md".to_string(),
+            "# Plan
+- [ ] x"
+                .to_string(),
+        )];
+        let ctx = LiveContext::new(&en, &tracked, &files, &[]);
+        // The source defines `scan` but never the text `Tensor::scan`.
+        let only_scan_exists = |s: &str| s != "scan";
+        assert!(!ctx.keeps_absent_artifact(
+            &en,
+            "docs/plan.md",
+            "- [ ] Add `Tensor::scan` to the graph crate",
+            &only_scan_exists
+        ));
+        // A qualified symbol whose final segment is also absent still fires.
+        assert!(ctx.keeps_absent_artifact(
+            &en,
+            "docs/plan.md",
+            "- [ ] Add `Tensor::unscan` to the graph crate",
+            &only_scan_exists
         ));
     }
 

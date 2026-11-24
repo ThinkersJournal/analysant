@@ -43,6 +43,8 @@ const WORK_DOCUMENTS: &str = include_str!("../data/en/work-documents.txt");
 const STANDING_RULE_OPENERS: &str = include_str!("../data/en/standing-rule-openers.txt");
 const OPEN_WORK_MARKERS: &str = include_str!("../data/en/open-work-markers.txt");
 const CHECKBOX_OPENERS: &str = include_str!("../data/en/checkbox-openers.txt");
+const TEMPLATE_DOCUMENTS: &str = include_str!("../data/en/template-documents.txt");
+const OPTIONAL_STEP_MARKERS: &str = include_str!("../data/en/optional-step-markers.txt");
 const CLOSED_DOCUMENT_MARKERS: &str = include_str!("../data/en/closed-document-markers.txt");
 const CLAUSE_JOINERS: &str = include_str!("../data/en/clause-joiners.txt");
 const STATUS_LINE_WORDS: &str = include_str!("../data/en/status-line-words.txt");
@@ -138,6 +140,8 @@ impl English {
         lexicons.add_lexicon("checkbox-openers", CHECKBOX_OPENERS);
         lexicons.add_lexicon("closed-document-markers", CLOSED_DOCUMENT_MARKERS);
         lexicons.add_lexicon("clause-joiners", CLAUSE_JOINERS);
+        lexicons.add_lexicon("template-documents", TEMPLATE_DOCUMENTS);
+        lexicons.add_lexicon("optional-step-markers", OPTIONAL_STEP_MARKERS);
         lexicons.add_lexicon("status-line-words", STATUS_LINE_WORDS);
         lexicons.add_lexicon("adverb-suffixes", ADVERB_SUFFIXES);
         lexicons.add_lexicon("gerund-suffixes", GERUND_SUFFIXES);
