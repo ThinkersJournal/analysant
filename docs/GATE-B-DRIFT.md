@@ -37,4 +37,36 @@ False classes still in the sample (mine): commit/push/report/"READY" ceremony st
 
 **Needs from the PM:** the provider and price, and confirmation of the estimate above.
 
+## B run on a local model (2026-11-24, PM decision: local only, no hosted call, no secret read)
+
+Model `overmind-qwen35-9b-ctx16k` (Qwen3.5 9B Q4_K_M) on this laptop's Ollama; the RTX 4070 (8 GB) was idle at start (0 MiB used), the model took about 6.6 GB, calls ran one at a time at about 4-5 s each (about 14 minutes of GPU in all: 30 + 30 + 30 + 121 rows, plus 3 control rows). Nothing left the machine. The driver is a scratch script (not in the repository); it feeds the step, the document start and deterministic evidence (does each named file or identifier exist in the tree) and asks for OPEN / DONE / OBSOLETE / NOT_A_STEP as JSON at temperature 0. TRUE for the model = OPEN, DONE ("tick it") or OBSOLETE ("delete it").
+
+**Validation on the 30 rows already judged (both judges are Claude family).** Planted control: 3 of 3 correct (missing file: OPEN; existing file: DONE; optional step: NOT_A_STEP).
+
+| prompt / model | rows kept | lane-true among kept | blind-true among kept | agreement with lane | agreement with blind |
+|---|---|---|---|---|---|
+| v1, qwen3.5 | 24 | 12 | 16 | 18/30 | 22/30 |
+| v1, qwen3.8 | 23 | 11 | 15 | 17/30 | 21/30 |
+| v2 (sharper rules), qwen3.5 | 17 | 11 | 13 | 23/30 | 23/30 |
+
+v2 was written after reading v1's errors on these 30, so **those 30 rows are spent and v2's validation numbers are not a clean test**; the fresh sample below is. v2 and qwen3.5 were used for everything after.
+
+**Run over the 121 findings (census population 121, 61 repos read):** OPEN 61, DONE 7, OBSOLETE 7, NOT_A_STEP 46; kept 75.
+
+**Fresh blind sample (seed 20261202).** Pool: the 75 kept rows minus the 17 already judged = 58 (all taken; fewer than 60, so no per-repo cap was applied: fuel 40, synapse 7, lightbulb 5, coderipper 2, auth-framework 2, mlmf 1, HumboldtUnified 1) plus 20 of the model's 46 NOT_A_STEP drops (fresh), shuffled together so the judges cannot tell which is which. Two independent blind Sonnet judges (sheet and trees only, separate directories, no model output shown). The judges, not this lane, judged these 78 rows; the lane audited 12 rows afterwards.
+
+| | judge A | judge B |
+|---|---|---|
+| TRUE among the 58 kept | **47 (81%)** | **46 (79%)** |
+| fuel (40) / not fuel (18) | 30 / 17 | 30 / 16 |
+| TRUE among the 20 dropped | 3 | 3 |
+
+A and B agree on 75 of 78 rows; both TRUE on 45 of the 58 kept. **Against the 80% bar this is on the line: one judge clears it by one row, the other misses by one, so it is not a clean pass.** Read it with these cautions, which I am reporting rather than resolving:
+- Both judges are Claude and lenient: B said it checked the trees for about half its rows, and both gave one of two stock reasons for every row.
+- Lane audit of 12 randomly chosen both-TRUE rows against the tree: 5 clearly genuine (CONTRIBUTING.md absent; a named function, test or contract file already present, so tick it), 7 weak (a TDD "write the failing test" step that names no artifact, or a path-with-line-range token that is spurious). By the letter of the definition (an unticked step in a finished plan is stale), the weak ones are TRUE; by a stricter reading (would the owner want to be told) they are not. That reading gap is the whole difference between 80% and about 50% here.
+- 40 of the 58 are fuel (69%); outside fuel the rate is 17/18 and 16/18 on small numbers.
+- The model dropped 3 true rows of 20 (15%): a recall cost, not measured over the population.
+
+**What the PM needs to decide:** whether TRUE includes "unticked box in a finished plan" (the definition in the board 499 brief says yes, and then even the deterministic check is near-trivially true on old plans), and whether Claude judges are acceptable for a cost-rule-bound check. The local model is sane (control right, drops are 85% correct) and cost nothing; with the brief's definition its output sits at 79-81%.
+
 — lane: analysant
