@@ -13,6 +13,9 @@ pub struct LiveContext {
     plan: Vec<HashSet<String>>,
     /// Extensions of the tracked files: a token ending in one of these names a file.
     extensions: HashSet<String>,
+    /// Every directory prefix of a tracked path (`crates`, `crates/core`, ...): a slash token is a path only under a real top-level
+    /// directory, and an existing directory is not missing.
+    dirs: HashSet<String>,
 }
 
 fn words(text: &str) -> Vec<String> {
@@ -54,6 +57,15 @@ impl LiveContext {
                 .iter()
                 .filter_map(|p| p.rsplit_once('.'))
                 .map(|(_, e)| e.to_lowercase())
+                .collect(),
+            dirs: tracked
+                .iter()
+                .flat_map(|p| {
+                    let l = p.to_lowercase();
+                    l.match_indices('/')
+                        .map(|(i, _)| l[..i].to_string())
+                        .collect::<Vec<_>>()
+                })
                 .collect(),
         }
     }
@@ -131,11 +143,14 @@ impl LiveContext {
         {
             return false;
         }
-        path_artifacts(&lower, &self.extensions).iter().any(|t| {
-            !self.paths.contains(t) && !self.names.contains(t.rsplit('/').next().unwrap_or(t))
-        }) || symbol_artifacts(text)
+        path_artifacts(&lower, &self.extensions, &self.dirs)
             .iter()
-            .any(|s| symbol_absent(s.rsplit_once(':').map_or(s.as_str(), |(_, last)| last)))
+            .any(|t| {
+                !self.paths.contains(t) && !self.names.contains(t.rsplit('/').next().unwrap_or(t))
+            })
+            || symbol_artifacts(text)
+                .iter()
+                .any(|s| symbol_absent(s.rsplit_once(':').map_or(s.as_str(), |(_, last)| last)))
     }
 
     /// A token of the item that looks like a path or file name (it holds `/`, or ends in a dot and 1-5 letters or digits) and
@@ -150,13 +165,21 @@ impl LiveContext {
     }
 }
 
-/// Tokens of a step that name a file: they hold `/`, or end in a known file extension.
-fn path_artifacts(lower: &str, extensions: &HashSet<String>) -> Vec<String> {
+/// Tokens of a step that name a file: they end in a known file extension, or hold `/` under a top-level directory of the tree. A
+/// trailing `:line` or `:line-line` is dropped (it names the file), a trailing `/` too, and an existing directory is not returned.
+/// A slash in prose (`ms/token`, `mit/apache-2.0`) is not a path: its first segment is no directory of the tree.
+fn path_artifacts(
+    lower: &str,
+    extensions: &HashSet<String>,
+    dirs: &HashSet<String>,
+) -> Vec<String> {
     lower
         .split(|c: char| {
             c.is_whitespace() || matches!(c, '`' | '(' | ')' | ',' | ';' | '"' | '\'' | '[' | ']')
         })
         .map(|t| t.trim_matches(['.', ':', '*']).trim_start_matches("./"))
+        .map(strip_line_range)
+        .map(|t| t.trim_end_matches('/'))
         .filter(|t| {
             !t.contains("://")
                 && !t.starts_with('/')
@@ -164,12 +187,31 @@ fn path_artifacts(lower: &str, extensions: &HashSet<String>) -> Vec<String> {
                 && !t.starts_with('$')
                 && !t.starts_with('%')
                 && !t.contains(":/")
-                && ((t.contains('/') && t.chars().any(|c| c.is_alphabetic()))
+                && !dirs.contains(*t)
+                && ((t.contains('/')
+                    && (has_extension(t)
+                        || t.split('/').next().is_some_and(|top| dirs.contains(top)))
+                    && t.chars().any(|c| c.is_alphabetic()))
                     || t.rsplit_once('.')
                         .is_some_and(|(stem, ext)| !stem.is_empty() && extensions.contains(ext)))
         })
         .map(str::to_string)
         .collect()
+}
+
+/// `src/a.rs:10-40` -> `src/a.rs`: a trailing `:<digits>` or `:<digits>-<digits>`.
+fn strip_line_range(t: &str) -> &str {
+    match t.rsplit_once(':') {
+        Some((head, tail))
+            if !head.is_empty()
+                && !tail.is_empty()
+                && tail.chars().all(|c| c.is_ascii_digit() || c == '-')
+                && tail.chars().next().is_some_and(|c| c.is_ascii_digit()) =>
+        {
+            head
+        }
+        _ => t,
+    }
 }
 
 /// Backticked identifiers that look like code (`snake_case`, `a::b`, `camelCase`), not paths, words or commands.
@@ -197,6 +239,7 @@ fn has_extension(t: &str) -> bool {
         !stem.is_empty()
             && (1..=5).contains(&ext.len())
             && ext.chars().all(|c| c.is_ascii_alphanumeric())
+            && ext.chars().any(|c| c.is_ascii_alphabetic())
     })
 }
 
@@ -432,6 +475,56 @@ mod tests {
             "- [ ] Write `/tmp/out/progress.md`",
         ] {
             assert!(!fires("docs/plan.md", t, &none_missing), "{t}");
+        }
+    }
+
+    /// PM ruling 2026-11-24 (board 499): spurious tokens and token-less steps are not reported (Gate B drift sample, weak rows).
+    #[test]
+    fn drift_skips_spurious_tokens_and_steps_naming_no_artifact() {
+        let en = English::new();
+        let tracked: BTreeSet<&str> = ["docs/plan.md", "crates/core/src/lib.rs"]
+            .into_iter()
+            .collect();
+        let files = vec![(
+            "docs/plan.md".to_string(),
+            "# Plan
+- [ ] x"
+                .to_string(),
+        )];
+        let ctx = LiveContext::new(&en, &tracked, &files, &[]);
+        let none_missing = |_: &str| false;
+        let all_missing = |_: &str| true;
+        let fires = |t: &str| ctx.keeps_absent_artifact(&en, "docs/plan.md", t, &none_missing);
+        // Control: a real missing path fires; so does one under an existing top-level directory with no extension.
+        assert!(fires("- [ ] Add `crates/core/src/export.rs`"));
+        assert!(fires("- [ ] Create `crates/newthing/src/main.rs`"));
+        // A path with a line range names the file: `lib.rs` exists, so no finding (fuel "path-with-line-range").
+        assert!(!fires("- [ ] Fix `crates/core/src/lib.rs:10-40`"));
+        assert!(!fires("- [ ] Fix crates/core/src/lib.rs:42"));
+        // A missing file with a line range still fires.
+        assert!(fires("- [ ] Fix `crates/core/src/gone.rs:10-40`"));
+        // A slash in prose is not a path: `a/b` whose first segment is no directory of the tree.
+        for t in [
+            "- [ ] Measure ms/token for decode",
+            "- [ ] Check alignment/bounds on the loader",
+            "- [ ] Licence is mit/apache-2.0",
+            "- [ ] Compare read/write throughput",
+        ] {
+            assert!(!fires(t), "{t}");
+        }
+        // An existing directory (with or without a trailing slash) is not missing.
+        assert!(!fires("- [ ] Move the notes into `docs/`"));
+        assert!(!fires("- [ ] Move the notes into crates/core/src"));
+        // A step naming no path-like, command-like or symbol-like token is not reported, whatever the symbol check says.
+        for t in [
+            "- [ ] **Step 1: Write the failing test**",
+            "- [ ] Run the tests and confirm they fail",
+            "- [ ] Improve the documentation",
+        ] {
+            assert!(
+                !ctx.keeps_absent_artifact(&en, "docs/plan.md", t, &all_missing),
+                "{t}"
+            );
         }
     }
 
