@@ -1,0 +1,13 @@
+# analysant-lexicon v1 | pack: en | path fragments of documents that state project work
+roadmap
+plan
+todo
+tasks
+backlog
+spec
+decision
+handoff
+proposal
+rfc
+adr
+status

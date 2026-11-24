@@ -1,0 +1,2 @@
+### Added
+- `[contradiction] require_denied_token = true` (`analysant_logical::Config::require_denied_token`): a denial pairs with a positive statement only when that statement's text carries the word the negation governs ("cannot *run*", "no *spec*"). A denial with no content word (a stance denial such as "is not supported") is never filtered. Off by default, so the no-config baseline and the Gate A oracle are unchanged. Gate B round 1 option for the noise class "the denied token is absent from the positive side".

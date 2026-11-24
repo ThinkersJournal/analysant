@@ -83,6 +83,22 @@ pub struct Config {
     /// Leave Name-kind claims (a bare identifier, clause id or label) out of the statements: they assert nothing a denial could
     /// contradict. Off by default (the Gate A oracle runs include them); a Gate B tuning option.
     pub skip_name_claims: bool,
+    /// Pair a denial with a positive statement only when the positive statement's text carries the denied word (the word the
+    /// negation marker governs: "can't *run*", "no *spec*"). Off by default (the Gate A oracle runs predate it); a Gate B tuning
+    /// option for the named noise class "the denied token is absent from the positive side".
+    pub require_denied_token: bool,
+    /// A shared word that occurs in more than this whole percent of the corpus's files identifies nothing (the project's own name, a
+    /// topic word every document uses): it is set aside before the pair's strength is judged. `None` leaves every shared word counting.
+    /// Off by default; a Gate B option for the noise class "one generic word carrying the pair".
+    pub generic_df_percent: Option<u32>,
+    /// A pair needs at least this many shared words that are not generic (see `generic_df_percent`); `None` leaves the pair's own strength
+    /// rule alone. Off by default; a Gate B option for pairs held by a single shared word.
+    pub min_shared_tokens: Option<usize>,
+    /// Both sides must be full claims (a sentence or list item of at least six words, not a heading, label or table cell), the pair must share at least two non-generic
+    /// words that match as the same exact word on both sides (no family-prefix match), the denied word must appear as that exact word in
+    /// the positive side, and the two sections must share a heading word. Off by default; the Gate B round 3 option
+    /// (docs/ROUND3-DESIGN.md).
+    pub strict: bool,
 }
 
 /// What a statement does about its capability.
@@ -179,6 +195,10 @@ pub struct ContradictionLens<'a> {
     positive_subject_min: usize,
     subject_token_min_chars: usize,
     skip_name_claims: bool,
+    require_denied_token: bool,
+    generic_df_percent: Option<u32>,
+    min_shared_tokens: Option<usize>,
+    strict: bool,
 }
 
 type Key = (String, usize, String, usize);
@@ -215,6 +235,10 @@ impl<'a> ContradictionLens<'a> {
             positive_subject_min: p("positive_subject_min"),
             subject_token_min_chars: p("subject_token_min_chars"),
             skip_name_claims: config.skip_name_claims,
+            require_denied_token: config.require_denied_token,
+            generic_df_percent: config.generic_df_percent,
+            min_shared_tokens: config.min_shared_tokens,
+            strict: config.strict,
         })
     }
 
@@ -266,6 +290,101 @@ impl<'a> ContradictionLens<'a> {
             }
         }
         (Polarity::Positive, None)
+    }
+
+    /// The subject tokens that occur in more than `generic_df_percent` of the files the statements come from (empty when off).
+    fn generic_tokens(&self, statements: &[Statement]) -> HashSet<String> {
+        let Some(percent) = self.generic_df_percent else {
+            return HashSet::new();
+        };
+        let mut files: HashSet<&str> = HashSet::new();
+        let mut df: std::collections::HashMap<&str, HashSet<&str>> =
+            std::collections::HashMap::new();
+        for s in statements {
+            files.insert(s.file.as_str());
+            for t in &s.subject {
+                df.entry(t.as_str()).or_default().insert(s.file.as_str());
+            }
+        }
+        let total = files.len();
+        df.into_iter()
+            .filter(|(_, in_files)| in_files.len() * 100 > percent as usize * total)
+            .map(|(t, _)| t.to_string())
+            .collect()
+    }
+
+    /// `strict`, sides: each is a full claim, and the denied word is, exactly, a word of the positive side.
+    fn strict_sides(&self, neg: &Statement, pos: &Statement) -> bool {
+        let norm = self.pack.normalizer();
+        let full_claim = |s: &Statement| {
+            if !matches!(
+                s.source,
+                StatementSource::Claim(Form::Sentence | Form::ListItem)
+            ) {
+                return false;
+            }
+            let lower = norm.fold_case(&s.text);
+            alnum_words(&lower).len() >= 6
+        };
+        if !full_claim(neg) || !full_claim(pos) {
+            return false;
+        }
+        match self.denied_token(neg) {
+            Some(denied) => alnum_words(&norm.fold_case(&pos.text))
+                .iter()
+                .any(|w| *w == denied),
+            None => false,
+        }
+    }
+
+    /// `strict`, shared words: at least two non-generic shared words that are exact words of both sides, and the sections share a
+    /// heading word (a word of four or more letters that is not a stopword).
+    fn strict_shared(
+        &self,
+        neg: &Statement,
+        pos: &Statement,
+        shared: &[String],
+        generic: &HashSet<String>,
+    ) -> bool {
+        let norm = self.pack.normalizer();
+        let neg_lower = norm.fold_case(&neg.text);
+        let pos_lower = norm.fold_case(&pos.text);
+        let neg_words = alnum_words(&neg_lower);
+        let pos_words = alnum_words(&pos_lower);
+        let exact = shared
+            .iter()
+            .filter(|t| !generic.contains(*t))
+            .filter(|t| neg_words.contains(&t.as_str()) && pos_words.contains(&t.as_str()))
+            .count();
+        if exact < 2 {
+            return false;
+        }
+        let neg_section = norm.fold_case(&neg.section);
+        let pos_section = norm.fold_case(&pos.section);
+        let pos_heading = alnum_words(&pos_section);
+        let neg_heading = alnum_words(&neg_section);
+        neg_heading
+            .iter()
+            .any(|w| w.len() >= 4 && !norm.is_stopword(w) && pos_heading.contains(w))
+    }
+
+    /// The content word a negation governs: the word after a refusal word (`no <capability>`), or the first non-stopword after the
+    /// marker phrase. `None` when there is none, or when it could never be a subject token (a pairing stopword, a digit word).
+    fn denied_token(&self, neg: &Statement) -> Option<String> {
+        let marker = neg.negated_by.as_deref()?;
+        let norm = self.pack.normalizer();
+        let prose = strip_backtick_spans(&norm.fold_case(&self.head_window(&neg.text)));
+        let word = if let Some(refusal) = marker.strip_suffix(" <capability>") {
+            self.refused_capability(&prose, refusal)?
+        } else {
+            let tokens = alnum_words(&prose);
+            let end = phrase_end(&tokens, marker)?;
+            tokens[end..]
+                .iter()
+                .find(|w| !norm.is_stopword(w))?
+                .to_string()
+        };
+        self.subject_tokens(&word).into_iter().next()
     }
 
     /// The capability a standalone refusal word refuses: the word after it that is neither a stopword
@@ -530,6 +649,7 @@ impl<'a> ContradictionLens<'a> {
         statements: &[Statement],
         store: Option<&ConceptStore<'_>>,
     ) -> Findings {
+        let generic = self.generic_tokens(statements);
         let mut best: BTreeMap<Key, Contradiction> = BTreeMap::new();
         let mut suppressed: BTreeMap<Key, Suppressed> = BTreeMap::new();
         for neg in statements
@@ -542,11 +662,41 @@ impl<'a> ContradictionLens<'a> {
                 if neg.file == pos.file {
                     continue;
                 }
+                if self.require_denied_token {
+                    if let Some(denied) = self.denied_token(neg) {
+                        let folded = self.pack.normalizer().fold_case(&pos.text);
+                        if !alnum_words(&folded)
+                            .iter()
+                            .any(|w| self.same_family(&denied, w))
+                        {
+                            continue;
+                        }
+                    }
+                }
+                if self.strict && !self.strict_sides(neg, pos) {
+                    continue;
+                }
                 let Some((shared, small_is_neg)) = self.shared_subject(&neg.subject, &pos.subject)
                 else {
                     continue;
                 };
                 if !self.strong_enough(&shared) {
+                    continue;
+                }
+                if !generic.is_empty() || self.min_shared_tokens.is_some() {
+                    let rest: Vec<String> = shared
+                        .iter()
+                        .filter(|t| !generic.contains(*t))
+                        .cloned()
+                        .collect();
+                    if !generic.is_empty() && !self.strong_enough(&rest) {
+                        continue;
+                    }
+                    if self.min_shared_tokens.is_some_and(|n| rest.len() < n) {
+                        continue;
+                    }
+                }
+                if self.strict && !self.strict_shared(neg, pos, &shared, &generic) {
                     continue;
                 }
                 let key = (neg.file.clone(), neg.line, pos.file.clone(), pos.line);
@@ -763,6 +913,142 @@ mod tests {
     }
 
     #[test]
+    fn require_denied_token_drops_a_pair_whose_positive_side_lacks_the_denied_word() {
+        let en = English::new();
+        let strict = ContradictionLens::new(
+            &en,
+            Config {
+                require_denied_token: true,
+                ..Config::default()
+            },
+        )
+        .expect("data");
+        let plain = lens(&en);
+        let mk = |l: &ContradictionLens<'_>, pos: &str| {
+            [
+                statement(l, "a.md", 1, "Scheduler cancellation cannot run"),
+                statement(l, "b.md", 2, pos),
+            ]
+        };
+        // The positive side never says "run": a shared topic, not a contradiction.
+        let absent = "Scheduler cancellation";
+        assert_eq!(
+            plain
+                .find_contradictions(&mk(&plain, absent), None)
+                .pairs
+                .len(),
+            1
+        );
+        assert!(
+            strict
+                .find_contradictions(&mk(&strict, absent), None)
+                .pairs
+                .is_empty()
+        );
+        // Positive control: when the positive side carries the denied word, it still pairs.
+        let present = "Scheduler cancellation can run";
+        assert_eq!(
+            strict
+                .find_contradictions(&mk(&strict, present), None)
+                .pairs
+                .len(),
+            1
+        );
+        // A stance-word denial ("is not supported") has no content denied word, so it is never filtered.
+        let s = [
+            statement(
+                &strict,
+                "a.md",
+                1,
+                "Scheduler cancellation is not supported",
+            ),
+            statement(&strict, "b.md", 2, absent),
+        ];
+        assert_eq!(strict.find_contradictions(&s, None).pairs.len(), 1);
+    }
+
+    #[test]
+    fn generic_df_percent_sets_aside_words_every_document_uses() {
+        let en = English::new();
+        let strict = ContradictionLens::new(
+            &en,
+            Config {
+                generic_df_percent: Some(60),
+                ..Config::default()
+            },
+        )
+        .expect("data");
+        let plain = lens(&en);
+        // "scheduler cancellation" is in all four files: it names the project's topic, not a shared fact.
+        let all = |l: &ContradictionLens<'_>| {
+            [
+                statement(l, "a.md", 1, "Scheduler cancellation is not supported"),
+                statement(l, "b.md", 2, "Scheduler cancellation in flight"),
+                statement(l, "c.md", 3, "Scheduler cancellation guide"),
+                statement(l, "d.md", 4, "Scheduler cancellation notes"),
+            ]
+        };
+        assert!(
+            !plain
+                .find_contradictions(&all(&plain), None)
+                .pairs
+                .is_empty()
+        );
+        assert!(
+            strict
+                .find_contradictions(&all(&strict), None)
+                .pairs
+                .is_empty()
+        );
+        assert_eq!(strict.generic_tokens(&all(&strict)).len(), 2);
+        assert!(plain.generic_tokens(&all(&plain)).is_empty());
+        // Positive control: the same words in two of four files are specific enough to pair.
+        let two = [
+            statement(
+                &strict,
+                "a.md",
+                1,
+                "Scheduler cancellation is not supported",
+            ),
+            statement(&strict, "b.md", 2, "Scheduler cancellation in flight"),
+            statement(&strict, "c.md", 3, "Unrelated guide"),
+            statement(&strict, "d.md", 4, "Other notes"),
+        ];
+        assert_eq!(strict.find_contradictions(&two, None).pairs.len(), 1);
+    }
+
+    #[test]
+    fn min_shared_tokens_drops_a_pair_held_by_too_few_shared_words() {
+        let en = English::new();
+        let with = |n: Option<usize>| {
+            ContradictionLens::new(
+                &en,
+                Config {
+                    min_shared_tokens: n,
+                    ..Config::default()
+                },
+            )
+            .expect("data")
+        };
+        let pair = |l: &ContradictionLens<'_>| {
+            [
+                statement(l, "a.md", 1, "Scheduler cancellation is not supported"),
+                statement(l, "b.md", 2, "Scheduler cancellation in flight"),
+            ]
+        };
+        // The pair shares two words (scheduler, cancellation).
+        let (off, two, three) = (with(None), with(Some(2)), with(Some(3)));
+        assert_eq!(off.find_contradictions(&pair(&off), None).pairs.len(), 1);
+        assert_eq!(two.find_contradictions(&pair(&two), None).pairs.len(), 1);
+        assert!(
+            three
+                .find_contradictions(&pair(&three), None)
+                .pairs
+                .is_empty()
+        );
+    }
+
+    #[test]
     fn a_missing_lexicon_is_reported_not_defaulted() {
         struct Bare(English);
         impl LanguagePack for Bare {
@@ -796,5 +1082,41 @@ mod tests {
         };
         assert!(m.contains(&"negation-phrases".to_string()));
         assert!(m.contains(&"param head_window_tokens".to_string()));
+    }
+
+    #[test]
+    fn strict_wants_full_claims_exact_shared_words_and_a_shared_heading_word() {
+        let en = English::new();
+        let strict_lens = ContradictionLens::new(
+            &en,
+            Config {
+                strict: true,
+                ..Config::default()
+            },
+        )
+        .expect("data");
+        let claim = |l: &ContradictionLens<'_>, file: &str, text: &str, section: &str| {
+            let mut s = statement(l, file, 1, text);
+            s.source = StatementSource::Claim(Form::Sentence);
+            s.section = section.into();
+            s
+        };
+        let neg = "The scheduler does not cancel running jobs today";
+        let pos = "The scheduler will cancel running jobs through the queue";
+        let pair = |l: &ContradictionLens<'_>, n: &str, p: &str, ns: &str, ps: &str| {
+            let s = [claim(l, "a.md", n, ns), claim(l, "b.md", p, ps)];
+            l.find_contradictions(&s, None).pairs.len()
+        };
+        // Positive control: the loose lens pairs the same two sentences.
+        assert_eq!(pair(&lens(&en), neg, pos, "Jobs", "Jobs"), 1);
+        // Strict pairs them when they share a heading word...
+        assert_eq!(pair(&strict_lens, neg, pos, "Jobs", "Jobs"), 1);
+        // ...and not when the headings share none.
+        assert_eq!(pair(&strict_lens, neg, pos, "Jobs", "Queue"), 0);
+        // A bare label on the positive side is not a claim.
+        assert_eq!(
+            pair(&strict_lens, neg, "Scheduler cancellation", "Jobs", "Jobs"),
+            0
+        );
     }
 }

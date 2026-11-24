@@ -1,0 +1,9 @@
+# analysant-lexicon v1 | pack: en | openers of a standing rule, never a task (quoted: the trailing space is part of the entry)
+"always "
+"never "
+"do not "
+"don't "
+"must not "
+"no "
+"rule:"
+"rule "

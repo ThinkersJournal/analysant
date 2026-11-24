@@ -47,8 +47,30 @@ pub struct ProjectConfig {
     /// `[untasked] skip_names = true`: the untasked check sets aside Name-kind claims (bare identifiers, labels, crate names), which state no
     /// work. Off by default: the Gate A oracle runs (v4, v5) include Name-claim findings; this is a Gate B tuning option.
     pub untasked_skip_names: bool,
+    /// `[untasked] only_kinds = ["directive", ...]`: only claims of these kinds are checked against the plan; empty means every kind (the
+    /// default, which the Gate A oracle runs rely on). Kind names: directive, assertion, question, decision, definition, proposal,
+    /// report, name, description, unclassified.
+    pub untasked_only_kinds: Vec<analysant_core::Kind>,
     /// `[contradiction] skip_names = true`: Name-kind claims are not statements the contradiction lens pairs. Off by default (Gate A).
     pub contradiction_skip_names: bool,
+    /// `[contradiction] require_denied_token = true`: a denial pairs only with a positive statement that carries the denied word. Off by default.
+    pub contradiction_require_denied_token: bool,
+    /// `[contradiction] generic_df_percent = N`: a shared word in more than N% of the corpus's files does not count toward a pair's strength.
+    pub contradiction_generic_df_percent: Option<u32>,
+    /// `[contradiction] min_shared_tokens = N`: a pair needs at least N shared words that are not generic. Off by default.
+    pub contradiction_min_shared_tokens: Option<usize>,
+    /// `[contradiction] strict = true`: full-claim sides, two exact non-generic shared words, the denied word exact in the positive side,
+    /// and a shared heading word. Off by default (docs/ROUND3-DESIGN.md).
+    pub contradiction_strict: bool,
+    /// `[untasked] require_open_work = true`: only a claim from a work-bearing document that states open work is checked against the plan.
+    /// Off by default (docs/ROUND3-DESIGN.md).
+    pub untasked_require_open_work: bool,
+    /// `[contradiction] minimal_pair = true`: only a pair with the same head, verb and object, flipped by one negation (Gate B round 4).
+    pub contradiction_minimal_pair: bool,
+    /// `[untasked] live_open_boxes = true`: only an unticked box in a live document that names no existing file and is not half-covered by a plan line (Gate B round 4).
+    pub untasked_live_open_boxes: bool,
+    /// `[untasked] absent_artifact = true`: only an unticked box in a live document that names a file or symbol absent from the tree (Gate B round 5, the narrow check).
+    pub untasked_absent_artifact: bool,
 }
 
 /// A project file that could not be read as configuration.
@@ -103,6 +125,33 @@ fn subtable<'a>(
     }
 }
 
+/// The claim kind a config name stands for: the kind's own variant name, lower-cased (no word list lives in the engine).
+fn kind_named(name: &str) -> Result<analysant_core::Kind, ProjectError> {
+    use analysant_core::Kind;
+    [
+        Kind::Unclassified,
+        Kind::Directive,
+        Kind::Assertion,
+        Kind::Question,
+        Kind::Decision,
+        Kind::Definition,
+        Kind::Proposal,
+        Kind::Report,
+        Kind::Name,
+        Kind::Description,
+    ]
+    .into_iter()
+    .find(|k| format!("{k:?}").eq_ignore_ascii_case(name))
+    .map_or_else(
+        || {
+            err(format!(
+                "unknown claim kind `{name}` in [untasked] only_kinds"
+            ))
+        },
+        Ok,
+    )
+}
+
 impl ProjectConfig {
     pub fn parse(text: &str) -> Result<Self, ProjectError> {
         let root: toml::Table = text
@@ -137,7 +186,33 @@ impl ProjectConfig {
             });
         }
         if let Some(t) = subtable(&root, "contradiction")? {
-            only_keys(t, "[contradiction]", &["pairing_stopwords", "skip_names"])?;
+            only_keys(
+                t,
+                "[contradiction]",
+                &[
+                    "pairing_stopwords",
+                    "skip_names",
+                    "require_denied_token",
+                    "generic_df_percent",
+                    "min_shared_tokens",
+                    "strict",
+                    "minimal_pair",
+                ],
+            )?;
+            cfg.contradiction_minimal_pair = match t.get("minimal_pair") {
+                Some(v) => match v.as_bool() {
+                    Some(b) => b,
+                    None => return err("`minimal_pair` in [contradiction] must be true or false"),
+                },
+                None => false,
+            };
+            cfg.contradiction_strict = match t.get("strict") {
+                Some(v) => match v.as_bool() {
+                    Some(b) => b,
+                    None => return err("`strict` in [contradiction] must be true or false"),
+                },
+                None => false,
+            };
             cfg.pairing_stopwords = strings(t, "pairing_stopwords", "[contradiction]")?;
             cfg.contradiction_skip_names = match t.get("skip_names") {
                 Some(v) => match v.as_bool() {
@@ -146,9 +221,77 @@ impl ProjectConfig {
                 },
                 None => false,
             };
+            cfg.contradiction_require_denied_token = match t.get("require_denied_token") {
+                Some(v) => match v.as_bool() {
+                    Some(b) => b,
+                    None => {
+                        return err(
+                            "`require_denied_token` in [contradiction] must be true or false",
+                        );
+                    }
+                },
+                None => false,
+            };
+            cfg.contradiction_min_shared_tokens = match t.get("min_shared_tokens") {
+                None => None,
+                Some(v) => match v.as_integer().and_then(|n| usize::try_from(n).ok()) {
+                    Some(n) => Some(n),
+                    None => {
+                        return err(
+                            "`min_shared_tokens` in [contradiction] must be a whole number",
+                        );
+                    }
+                },
+            };
+            cfg.contradiction_generic_df_percent = match t.get("generic_df_percent") {
+                None => None,
+                Some(v) => match v.as_integer().and_then(|n| u32::try_from(n).ok()) {
+                    Some(n) if n <= 100 => Some(n),
+                    _ => {
+                        return err(
+                            "`generic_df_percent` in [contradiction] must be a whole number from 0 to 100",
+                        );
+                    }
+                },
+            };
         }
         if let Some(t) = subtable(&root, "untasked")? {
-            only_keys(t, "[untasked]", &["skip_names"])?;
+            only_keys(
+                t,
+                "[untasked]",
+                &[
+                    "skip_names",
+                    "only_kinds",
+                    "require_open_work",
+                    "live_open_boxes",
+                    "absent_artifact",
+                ],
+            )?;
+            cfg.untasked_absent_artifact = match t.get("absent_artifact") {
+                Some(v) => match v.as_bool() {
+                    Some(b) => b,
+                    None => return err("`absent_artifact` in [untasked] must be true or false"),
+                },
+                None => false,
+            };
+            cfg.untasked_live_open_boxes = match t.get("live_open_boxes") {
+                Some(v) => match v.as_bool() {
+                    Some(b) => b,
+                    None => return err("`live_open_boxes` in [untasked] must be true or false"),
+                },
+                None => false,
+            };
+            cfg.untasked_require_open_work = match t.get("require_open_work") {
+                Some(v) => match v.as_bool() {
+                    Some(b) => b,
+                    None => return err("`require_open_work` in [untasked] must be true or false"),
+                },
+                None => false,
+            };
+            cfg.untasked_only_kinds = strings(t, "only_kinds", "[untasked]")?
+                .iter()
+                .map(|n| kind_named(n))
+                .collect::<Result<_, _>>()?;
             cfg.untasked_skip_names = match t.get("skip_names") {
                 Some(v) => match v.as_bool() {
                     Some(b) => b,
@@ -189,6 +332,130 @@ skip_names = true
             ProjectConfig::parse(
                 "[contradiction]
 skip_names = 1
+"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn contradiction_require_denied_token_is_off_by_default_and_must_be_a_bool() {
+        assert!(
+            !ProjectConfig::parse("")
+                .unwrap()
+                .contradiction_require_denied_token
+        );
+        assert!(
+            ProjectConfig::parse(
+                "[contradiction]
+require_denied_token = true
+"
+            )
+            .unwrap()
+            .contradiction_require_denied_token
+        );
+        assert!(
+            ProjectConfig::parse(
+                "[contradiction]
+require_denied_token = 2
+"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn contradiction_generic_df_percent_is_off_by_default_and_must_be_0_to_100() {
+        assert_eq!(
+            ProjectConfig::parse("")
+                .unwrap()
+                .contradiction_generic_df_percent,
+            None
+        );
+        assert_eq!(
+            ProjectConfig::parse(
+                "[contradiction]
+generic_df_percent = 25
+"
+            )
+            .unwrap()
+            .contradiction_generic_df_percent,
+            Some(25)
+        );
+        for bad in ["101", "-1", "\"x\"", "2.5"] {
+            let t = format!(
+                "[contradiction]
+generic_df_percent = {bad}
+"
+            );
+            assert!(ProjectConfig::parse(&t).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn untasked_only_kinds_is_empty_by_default_and_names_real_kinds() {
+        use analysant_core::Kind;
+        assert!(
+            ProjectConfig::parse("")
+                .unwrap()
+                .untasked_only_kinds
+                .is_empty()
+        );
+        let c = ProjectConfig::parse(
+            "[untasked]
+only_kinds = [\"directive\", \"proposal\"]
+",
+        )
+        .unwrap();
+        assert_eq!(c.untasked_only_kinds, [Kind::Directive, Kind::Proposal]);
+        assert!(
+            ProjectConfig::parse(
+                "[untasked]
+only_kinds = [\"order\"]
+"
+            )
+            .is_err()
+        );
+        assert!(
+            ProjectConfig::parse(
+                "[untasked]
+only_kinds = \"directive\"
+"
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn contradiction_min_shared_tokens_is_off_by_default_and_must_be_a_number() {
+        assert_eq!(
+            ProjectConfig::parse("")
+                .unwrap()
+                .contradiction_min_shared_tokens,
+            None
+        );
+        assert_eq!(
+            ProjectConfig::parse(
+                "[contradiction]
+min_shared_tokens = 2
+"
+            )
+            .unwrap()
+            .contradiction_min_shared_tokens,
+            Some(2)
+        );
+        assert!(
+            ProjectConfig::parse(
+                "[contradiction]
+min_shared_tokens = -1
+"
+            )
+            .is_err()
+        );
+        assert!(
+            ProjectConfig::parse(
+                "[contradiction]
+min_shared_tokens = \"2\"
 "
             )
             .is_err()
@@ -272,5 +539,36 @@ skip = true
         ] {
             assert!(ProjectConfig::parse(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn round_3_options_are_off_by_default_and_must_be_bools() {
+        let c = ProjectConfig::parse("").unwrap();
+        assert!(!c.contradiction_strict && !c.untasked_require_open_work);
+        let c = ProjectConfig::parse(
+            "[contradiction]
+strict = true
+[untasked]
+require_open_work = true
+",
+        )
+        .unwrap();
+        assert!(c.contradiction_strict && c.untasked_require_open_work);
+        assert!(
+            ProjectConfig::parse(
+                "[contradiction]
+strict = 1
+"
+            )
+            .is_err()
+        );
+        assert!(
+            ProjectConfig::parse(
+                "[untasked]
+require_open_work = \"yes\"
+"
+            )
+            .is_err()
+        );
     }
 }

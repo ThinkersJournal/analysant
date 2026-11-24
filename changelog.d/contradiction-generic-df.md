@@ -1,0 +1,2 @@
+### Added
+- `[contradiction] generic_df_percent = N` (`analysant_logical::Config::generic_df_percent`): a shared word that occurs in more than N% of the corpus's files (the project's own name, a topic word every document uses) does not count toward a pair's strength; the pair must still be strong without it. Corpus-derived, no word list. Off by default, so the no-config baseline and the Gate A oracle are unchanged. Gate B round 1 option for the noise class "one generic word carrying the pair".

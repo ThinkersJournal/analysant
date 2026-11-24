@@ -16,6 +16,8 @@ Licence: MIT OR Apache-2.0.
 
 ## Known limits: the contradiction lens (slice 4)
 
+> **Retired (CireSnave, board 496, 2026-11-23).** The contradiction lens is no longer a shipped feature: Gate B rounds 3 and 4 judged 0 true findings of every row judged, so no accuracy is claimed for it and it should not be in a default configuration. The code and the report (`docs/GATE-B-REPORT.md`) stay. The directed-but-untasked check continues only in its narrow form, `[untasked] absent_artifact = true`.
+
 The seed sense table for the reference corpus reproduces the spike's triage; it is **seed-fit, not generalisation**:
 
 - Four "budget" pairs (a resource budget against a byte budget) are removed only by a sense cued on "consumer contract" in the

@@ -1,0 +1,17 @@
+# analysant-lexicon v1 | pack: en | path fragments of documents that record, describe or instruct (never state project work)
+changelog
+change_log
+history
+archive
+contributing
+claude.md
+agents.md
+instructions
+readme
+runbook
+guide
+license
+security
+code_of_conduct
+release-notes
+releases

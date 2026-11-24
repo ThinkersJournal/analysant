@@ -9,7 +9,7 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-analysant-core = { path = "../analysant-core", version = "0.3.1" }
+analysant-core = { path = "../analysant-core", version = "0.3.2" }
 syn = { version = "3.0.10", default-features = false, features = ["full", "parsing", "printing", "clone-impls"] }
 proc-macro2 = { version = "1.0.107", features = ["span-locations"] }
 quote = "1.0.47"

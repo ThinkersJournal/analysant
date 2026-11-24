@@ -1,0 +1,2 @@
+### Added
+- `[untasked] only_kinds = ["directive", "proposal", ...]` in `.analysant/project.toml`: only claims of the listed kinds are checked against the plan; every other claim is set aside (counted, like a claim with no key). Empty by default, so the no-config baseline and the Gate A oracle are unchanged. Gate B round 2 option: round 1 found the untasked check reports descriptions of behaviour and records of finished work (changelog, archive), which state no task.
