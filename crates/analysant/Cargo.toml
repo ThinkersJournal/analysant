@@ -9,12 +9,12 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-analysant-core = { path = "../analysant-core", version = "0.3.1" }
-analysant-lexical = { path = "../analysant-lexical", version = "0.3.1" }
-analysant-pragmatic = { path = "../analysant-pragmatic", version = "0.3.1" }
+analysant-core = { path = "../analysant-core", version = "0.3.2" }
+analysant-lexical = { path = "../analysant-lexical", version = "0.3.2" }
+analysant-pragmatic = { path = "../analysant-pragmatic", version = "0.3.2" }
 toml = { version = "1.2.1", default-features = false, features = ["parse", "serde", "std"] }
-analysant-logical = { path = "../analysant-logical", version = "0.3.1" }
-analysant-rust = { path = "../analysant-rust", version = "0.3.1" }
-analysant-semantic = { path = "../analysant-semantic", version = "0.3.1" }
+analysant-logical = { path = "../analysant-logical", version = "0.3.2" }
+analysant-rust = { path = "../analysant-rust", version = "0.3.2" }
+analysant-semantic = { path = "../analysant-semantic", version = "0.3.2" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
