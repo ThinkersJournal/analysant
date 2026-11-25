@@ -61,12 +61,33 @@ v2 was written after reading v1's errors on these 30, so **those 30 rows are spe
 | fuel (40) / not fuel (18) | 30 / 17 | 30 / 16 |
 | TRUE among the 20 dropped | 3 | 3 |
 
-A and B agree on 75 of 78 rows; both TRUE on 45 of the 58 kept. **Against the 80% bar this is on the line: one judge clears it by one row, the other misses by one, so it is not a clean pass.** Read it with these cautions, which I am reporting rather than resolving:
+A and B agree on 75 of 78 rows; both TRUE on 45 of the 58 kept. **Against the 80% bar this was on the line (81% / 79%). SUPERSEDED: the judges were Claude, so this is not the measure; the owner-disposition section below is.** Read it with these cautions, which I am reporting rather than resolving:
 - Both judges are Claude and lenient: B said it checked the trees for about half its rows, and both gave one of two stock reasons for every row.
 - Lane audit of 12 randomly chosen both-TRUE rows against the tree: 5 clearly genuine (CONTRIBUTING.md absent; a named function, test or contract file already present, so tick it), 7 weak (a TDD "write the failing test" step that names no artifact, or a path-with-line-range token that is spurious). By the letter of the definition (an unticked step in a finished plan is stale), the weak ones are TRUE; by a stricter reading (would the owner want to be told) they are not. That reading gap is the whole difference between 80% and about 50% here.
 - 40 of the 58 are fuel (69%); outside fuel the rate is 17/18 and 16/18 on small numbers.
 - The model dropped 3 true rows of 20 (15%): a recall cost, not measured over the population.
 
-**What the PM needs to decide:** whether TRUE includes "unticked box in a finished plan" (the definition in the board 499 brief says yes, and then even the deterministic check is near-trivially true on old plans), and whether Claude judges are acceptable for a cost-rule-bound check. The local model is sane (control right, drops are 85% correct) and cost nothing; with the brief's definition its output sits at 79-81%.
+**What the PM needs to decide:** whether TRUE includes "unticked box in a finished plan" (the definition in the board 499 brief says yes, and then even the deterministic check is near-trivially true on old plans), and whether Claude judges are acceptable for a cost-rule-bound check. The local model is sane (control right, drops are 85% correct) and cost nothing; with the brief's definition the Claude-judged figure was 79-81%, SUPERSEDED by the owners' dispositions below (the owner is the judge; no further Claude judging).
 
 — lane: analysant
+
+## Owner dispositions (2026-11-24/25; the owner is the judge, no Claude judging, no hosted model)
+
+The 51-row census was sent to the owning lanes as lists; **36 rows went out in lists** (fuel 10, lightbulb 10, mlmf 1, KISS 1, synapse 7, coderipper 2, OverMind 1, Humboldt 4) and **all 36 were answered** (0 unanswered). The census says 51; the 15-row gap between 51 and the 36 sent is not explained here and should be read as unmeasured, not as true or false. Answers are the owners' own findings, each at that repo's `origin/main`.
+
+| Owner | Rows | stale-and-fixed/stale | open-true (real undone work) | false (analysant wrong) |
+|---|---|---|---|---|
+| fuel | 10 | 6 | 2 | 2 (unticked by design) |
+| lightbulb | 10 | 3 | 7 | 0 |
+| synapse | 7 | 7 | 0 | 0 |
+| Humboldt | 4 | 2 | 2 | 0 |
+| coderipper | 2 | 1 | 0 | 1 (lock file is live) |
+| mlmf | 1 | 0 | 0 | 1 (test-created fixture name) |
+| KISS | 1 | 1 | 0 | 0 |
+| OverMind | 1 | 1 | 0 | 0 |
+| **Total** | **36** | **21** | **11** | **4** |
+
+- **Precision (owner confirms the row is real: stale or open-true) = 32 / 36 = 89%.** False = 4 / 36 = 11%.
+- **Owner changed the doc or did the step (shown, not merely promised) = 10 / 36 = 28%** (fuel 6, lightbulb 3 via PR #338, OverMind 1 via ff41404). A further 8 stale rows (KISS 1, synapse 7) and coderipper row 9 were declared stale with "tick/delete" but no change was shown; Humboldt r3/r4 were declared stale (outdated plan filename; column moved by design) with no change shown.
+- Caveat: 7 of the 11 open-true rows are lightbulb's, planned work with boxes correctly unticked. They count as true under the board 499 definition (an unticked box naming absent work), which is the definition the PM has to confirm; under a stricter "doc is wrong" reading the figure is 21 / 36 = 58%.
+- This section supersedes the 79-81% Claude-judged figures above.
