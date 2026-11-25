@@ -1,0 +1,13 @@
+# analysant-lexicon v1 | pack: en | text of a step that may legitimately stay undone or expects its artifact to be absent: optional steps and TDD red steps (drift check)
+(optional
+optional,
+optional:
+optional —
+skip if
+if desired
+nice to have
+watch fail
+watch it fail
+expected: fail
+expect fail
+should fail

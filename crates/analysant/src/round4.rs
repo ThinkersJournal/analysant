@@ -13,6 +13,9 @@ pub struct LiveContext {
     plan: Vec<HashSet<String>>,
     /// Extensions of the tracked files: a token ending in one of these names a file.
     extensions: HashSet<String>,
+    /// Every directory prefix of a tracked path (`crates`, `crates/core`, ...): a slash token is a path only under a real top-level
+    /// directory, and an existing directory is not missing.
+    dirs: HashSet<String>,
 }
 
 fn words(text: &str) -> Vec<String> {
@@ -54,6 +57,15 @@ impl LiveContext {
                 .iter()
                 .filter_map(|p| p.rsplit_once('.'))
                 .map(|(_, e)| e.to_lowercase())
+                .collect(),
+            dirs: tracked
+                .iter()
+                .flat_map(|p| {
+                    let l = p.to_lowercase();
+                    l.match_indices('/')
+                        .map(|(i, _)| l[..i].to_string())
+                        .collect::<Vec<_>>()
+                })
                 .collect(),
         }
     }
@@ -120,17 +132,25 @@ impl LiveContext {
             return false;
         }
         let path_l = path.replace('\\', "/").to_lowercase();
-        if lex
-            .entries("non-work-documents")
+        if ["non-work-documents", "template-documents"]
             .iter()
-            .any(|e| path_l.contains(e.as_str()))
+            .any(|l| lex.entries(l).iter().any(|e| path_l.contains(e.as_str())))
             || self.closed.get(path).copied().unwrap_or(false)
+            || lex
+                .entries("optional-step-markers")
+                .iter()
+                .any(|m| lower.contains(m.as_str()))
         {
             return false;
         }
-        path_artifacts(&lower, &self.extensions).iter().any(|t| {
-            !self.paths.contains(t) && !self.names.contains(t.rsplit('/').next().unwrap_or(t))
-        }) || symbol_artifacts(text).iter().any(|s| symbol_absent(s))
+        path_artifacts(&lower, &self.extensions, &self.dirs)
+            .iter()
+            .any(|t| {
+                !self.paths.contains(t) && !self.names.contains(t.rsplit('/').next().unwrap_or(t))
+            })
+            || symbol_artifacts(text)
+                .iter()
+                .any(|s| symbol_absent(s.rsplit_once(':').map_or(s.as_str(), |(_, last)| last)))
     }
 
     /// A token of the item that looks like a path or file name (it holds `/`, or ends in a dot and 1-5 letters or digits) and
@@ -145,22 +165,53 @@ impl LiveContext {
     }
 }
 
-/// Tokens of a step that name a file: they hold `/`, or end in a known file extension.
-fn path_artifacts(lower: &str, extensions: &HashSet<String>) -> Vec<String> {
+/// Tokens of a step that name a file: they end in a known file extension, or hold `/` under a top-level directory of the tree. A
+/// trailing `:line` or `:line-line` is dropped (it names the file), a trailing `/` too, and an existing directory is not returned.
+/// A slash in prose (`ms/token`, `mit/apache-2.0`) is not a path: its first segment is no directory of the tree.
+fn path_artifacts(
+    lower: &str,
+    extensions: &HashSet<String>,
+    dirs: &HashSet<String>,
+) -> Vec<String> {
     lower
         .split(|c: char| {
             c.is_whitespace() || matches!(c, '`' | '(' | ')' | ',' | ';' | '"' | '\'' | '[' | ']')
         })
         .map(|t| t.trim_matches(['.', ':', '*']).trim_start_matches("./"))
+        .map(strip_line_range)
+        .map(|t| t.trim_end_matches('/'))
         .filter(|t| {
             !t.contains("://")
                 && !t.starts_with('/')
-                && ((t.contains('/') && t.chars().any(|c| c.is_alphabetic()))
+                && !t.starts_with('~')
+                && !t.starts_with('$')
+                && !t.starts_with('%')
+                && !t.contains(":/")
+                && !dirs.contains(*t)
+                && ((t.contains('/')
+                    && (has_extension(t)
+                        || t.split('/').next().is_some_and(|top| dirs.contains(top)))
+                    && t.chars().any(|c| c.is_alphabetic()))
                     || t.rsplit_once('.')
                         .is_some_and(|(stem, ext)| !stem.is_empty() && extensions.contains(ext)))
         })
         .map(str::to_string)
         .collect()
+}
+
+/// `src/a.rs:10-40` -> `src/a.rs`: a trailing `:<digits>` or `:<digits>-<digits>`.
+fn strip_line_range(t: &str) -> &str {
+    match t.rsplit_once(':') {
+        Some((head, tail))
+            if !head.is_empty()
+                && !tail.is_empty()
+                && tail.chars().all(|c| c.is_ascii_digit() || c == '-')
+                && tail.chars().next().is_some_and(|c| c.is_ascii_digit()) =>
+        {
+            head
+        }
+        _ => t,
+    }
 }
 
 /// Backticked identifiers that look like code (`snake_case`, `a::b`, `camelCase`), not paths, words or commands.
@@ -188,6 +239,7 @@ fn has_extension(t: &str) -> bool {
         !stem.is_empty()
             && (1..=5).contains(&ext.len())
             && ext.chars().all(|c| c.is_ascii_alphanumeric())
+            && ext.chars().any(|c| c.is_ascii_alphabetic())
     })
 }
 
@@ -364,6 +416,144 @@ mod tests {
             "docs/plan.md",
             "- [ ] bump to v1.2 e.g. `cache`",
             &all_missing
+        ));
+    }
+
+    /// Census 497A false classes (docs/GATE-B-CENSUS-497A.md), one red-first test each; every census false positive is quoted.
+    #[test]
+    fn drift_skips_the_census_false_classes() {
+        let en = English::new();
+        let tracked: BTreeSet<&str> = ["docs/plan.md"].into_iter().collect();
+        let files = vec![(
+            "docs/plan.md".to_string(),
+            "# Plan
+- [ ] x"
+                .to_string(),
+        )];
+        let ctx = LiveContext::new(&en, &tracked, &files, &[]);
+        let none_missing = |_: &str| false;
+        let fires = |p: &str, t: &str, sym_absent: &dyn Fn(&str) -> bool| {
+            ctx.keeps_absent_artifact(&en, p, t, sym_absent)
+        };
+        // Control: the same shape of step fires in a plain plan.
+        assert!(fires(
+            "docs/plan.md",
+            "- [ ] Add `src/export.rs` for the exporter",
+            &none_missing
+        ));
+        // A PR template or other checklist file is not a plan (auth-framework PULL_REQUEST_TEMPLATE.md).
+        for p in [
+            ".github/PULL_REQUEST_TEMPLATE.md",
+            ".github/ISSUE_TEMPLATE/bug.md",
+            "docs/release-checklist.md",
+        ] {
+            assert!(
+                !fires(
+                    p,
+                    "- [ ] Add `src/export.rs` for the exporter",
+                    &none_missing
+                ),
+                "{p}"
+            );
+        }
+        // An optional step (fuel "(Optional, local GPU only) Mamba decode bench").
+        assert!(!fires(
+            "docs/plan.md",
+            "- [ ] **Step 3: (Optional, local GPU only) bench.** run `benches/decode.rs`. Skip if no device",
+            &none_missing
+        ));
+        // A TDD red step expects the artifact to be missing (fuel "Run, watch fail ... Expected: FAIL").
+        assert!(!fires(
+            "docs/plan.md",
+            "- [ ] **Step 3: Run, watch fail.** Expected: FAIL (`Tensor::scan_builder` undefined).",
+            &|_: &str| true
+        ));
+        // A path outside the repository is scratch, not a tracked artifact (KISS `C:/Projects/KISS/.superpowers/sdd/progress.md`).
+        for t in [
+            "- [ ] Update the ledger at `C:/Projects/KISS/.superpowers/sdd/progress.md` with outcomes",
+            "- [ ] Copy to `~/notes/progress.md`",
+            "- [ ] Write `/tmp/out/progress.md`",
+        ] {
+            assert!(!fires("docs/plan.md", t, &none_missing), "{t}");
+        }
+    }
+
+    /// PM ruling 2026-11-24 (board 499): spurious tokens and token-less steps are not reported (Gate B drift sample, weak rows).
+    #[test]
+    fn drift_skips_spurious_tokens_and_steps_naming_no_artifact() {
+        let en = English::new();
+        let tracked: BTreeSet<&str> = ["docs/plan.md", "crates/core/src/lib.rs"]
+            .into_iter()
+            .collect();
+        let files = vec![(
+            "docs/plan.md".to_string(),
+            "# Plan
+- [ ] x"
+                .to_string(),
+        )];
+        let ctx = LiveContext::new(&en, &tracked, &files, &[]);
+        let none_missing = |_: &str| false;
+        let all_missing = |_: &str| true;
+        let fires = |t: &str| ctx.keeps_absent_artifact(&en, "docs/plan.md", t, &none_missing);
+        // Control: a real missing path fires; so does one under an existing top-level directory with no extension.
+        assert!(fires("- [ ] Add `crates/core/src/export.rs`"));
+        assert!(fires("- [ ] Create `crates/newthing/src/main.rs`"));
+        // A path with a line range names the file: `lib.rs` exists, so no finding (fuel "path-with-line-range").
+        assert!(!fires("- [ ] Fix `crates/core/src/lib.rs:10-40`"));
+        assert!(!fires("- [ ] Fix crates/core/src/lib.rs:42"));
+        // A missing file with a line range still fires.
+        assert!(fires("- [ ] Fix `crates/core/src/gone.rs:10-40`"));
+        // A slash in prose is not a path: `a/b` whose first segment is no directory of the tree.
+        for t in [
+            "- [ ] Measure ms/token for decode",
+            "- [ ] Check alignment/bounds on the loader",
+            "- [ ] Licence is mit/apache-2.0",
+            "- [ ] Compare read/write throughput",
+        ] {
+            assert!(!fires(t), "{t}");
+        }
+        // An existing directory (with or without a trailing slash) is not missing.
+        assert!(!fires("- [ ] Move the notes into `docs/`"));
+        assert!(!fires("- [ ] Move the notes into crates/core/src"));
+        // A step naming no path-like, command-like or symbol-like token is not reported, whatever the symbol check says.
+        for t in [
+            "- [ ] **Step 1: Write the failing test**",
+            "- [ ] Run the tests and confirm they fail",
+            "- [ ] Improve the documentation",
+        ] {
+            assert!(
+                !ctx.keeps_absent_artifact(&en, "docs/plan.md", t, &all_missing),
+                "{t}"
+            );
+        }
+    }
+
+    /// fuel `Tensor::scan`: a qualified Rust path never appears literally in source, so it is searched by its final segment.
+    #[test]
+    fn a_qualified_symbol_is_searched_by_its_final_segment() {
+        let en = English::new();
+        let tracked: BTreeSet<&str> = ["docs/plan.md"].into_iter().collect();
+        let files = vec![(
+            "docs/plan.md".to_string(),
+            "# Plan
+- [ ] x"
+                .to_string(),
+        )];
+        let ctx = LiveContext::new(&en, &tracked, &files, &[]);
+        // The source defines `scan` but never the text `Tensor::scan`.
+        let only_scan_exists = |s: &str| s != "scan";
+        assert!(!ctx.keeps_absent_artifact(
+            &en,
+            "docs/plan.md",
+            "- [ ] Add `Tensor::scan` to the graph crate",
+            &only_scan_exists
+        ));
+        // A qualified symbol whose final segment is also absent still fires.
+        assert!(ctx.keeps_absent_artifact(
+            &en,
+            "docs/plan.md",
+            "- [ ] Add `Tensor::unscan` to the graph crate",
+            &only_scan_exists
         ));
     }
 

@@ -1,0 +1,5 @@
+# analysant-lexicon v1 | pack: en | path fragments of templates and checklist files: their boxes are blanks to fill in, not plan steps (drift check)
+template
+checkli
+pull_request
+pull-request

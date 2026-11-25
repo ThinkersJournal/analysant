@@ -315,7 +315,8 @@ pub fn produce(root: &Path, opts: &Options) -> Result<Production, ProduceError> 
         || config.untasked_absent_artifact
         || config.contradiction_minimal_pair)
         .then(|| crate::round4::LiveContext::new(&en, &tracked, &files, &plan_lines));
-    let untasked_status = if plan_lines.is_empty() {
+    // The drift check (`absent_artifact`) compares a plan step with the tree and reads no plan file.
+    let untasked_status = if plan_lines.is_empty() && !config.untasked_absent_artifact {
         LensStatus::NotAnalysed("no plan given: use --plan or [corpus] plan_files".into())
     } else {
         let run: UntaskedRun = untasked::directed_but_untasked_with(
@@ -345,7 +346,7 @@ pub fn produce(root: &Path, opts: &Options) -> Result<Production, ProduceError> 
             let symbol_absent = |s: &str| {
                 Command::new("git")
                     .current_dir(root)
-                    .args(["grep", "-q", "-F", "-e", s, "--", ":!*.md"])
+                    .args(["grep", "-q", "-w", "-F", "-e", s, "--", ":!*.md"])
                     .output()
                     .is_ok_and(|o| o.status.code() == Some(1))
             };
@@ -354,6 +355,7 @@ pub fn produce(root: &Path, opts: &Options) -> Result<Production, ProduceError> 
                 live.keeps_absent_artifact(&en, &doc.path, &claim.text, &symbol_absent)
             });
         }
+        let drift = config.untasked_absent_artifact;
         for (i, f) in &part.findings {
             let (doc, claim) = claims[*i];
             let mut search = format!(
@@ -367,10 +369,17 @@ pub fn produce(root: &Path, opts: &Options) -> Result<Production, ProduceError> 
                 project: opts.project.clone(),
                 file: doc.path.clone(),
                 line: claim.unit.source.span.line_start,
-                lens: f.lens.0.clone(),
-                kind: f.kind.label().to_string(),
+                lens: if drift { "drift" } else { &f.lens.0 }.to_string(),
+                kind: if drift { "drift" } else { f.kind.label() }.to_string(),
                 id: f.id.0.clone(),
-                refs: format!("form={:?}", claim.form),
+                refs: if drift {
+                    format!(
+                        "form={:?};ask=tick-it(done)|delete-it(obsolete)|do-it(open)",
+                        claim.form
+                    )
+                } else {
+                    format!("form={:?}", claim.form)
+                },
                 search,
                 control: format!(
                     "{:?}:{}",

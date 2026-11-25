@@ -1,0 +1,2 @@
+### Changed
+- `[untasked] absent_artifact = true` is now the plan-versus-tree drift check (CireSnave board 499): its rows carry lens and kind `drift` and the ask "tick it (done), delete it (obsolete) or do it (open)", and it no longer needs a plan file. It skips boxes in template and checklist files, optional steps, TDD red steps (expected FAIL), paths outside the repository, and searches a qualified symbol (`Tensor::scan`) by its final segment (whole word). Off by default; Gate A unchanged.
