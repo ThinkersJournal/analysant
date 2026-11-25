@@ -73,7 +73,7 @@ A and B agree on 75 of 78 rows; both TRUE on 45 of the 58 kept. **Against the 80
 
 ## Owner dispositions (2026-11-24/25; the owner is the judge, no Claude judging, no hosted model)
 
-The 51-row census was sent to the owning lanes as lists; **36 rows went out in lists** (fuel 10, lightbulb 10, mlmf 1, KISS 1, synapse 7, coderipper 2, OverMind 1, Humboldt 4) and **all 36 were answered** (0 unanswered). The census says 51; the 15-row gap between 51 and the 36 sent is not explained here and should be read as unmeasured, not as true or false. Answers are the owners' own findings, each at that repo's `origin/main`.
+The 51-row census was sent to the owning lanes as lists; **36 rows went out in lists** (fuel 10, lightbulb 10, mlmf 1, KISS 1, synapse 7, coderipper 2, OverMind 1, Humboldt 4) and **all 36 were answered** (0 unanswered). The census says 51; the 15-row gap between 51 and the 36 sent (the per-repo cap and the drops) is unmeasured, not true or false. Population: 51 findings, 36 sent, 36 answered, 15 unmeasured. Answers are the owners' own findings, each at that repo's `origin/main`.
 
 | Owner | Rows | stale-and-fixed/stale | open-true (real undone work) | false (analysant wrong) |
 |---|---|---|---|---|
@@ -91,3 +91,12 @@ The 51-row census was sent to the owning lanes as lists; **36 rows went out in l
 - **Owner changed the doc or did the step (shown, not merely promised) = 10 / 36 = 28%** (fuel 6, lightbulb 3 via PR #338, OverMind 1 via ff41404). A further 8 stale rows (KISS 1, synapse 7) and coderipper row 9 were declared stale with "tick/delete" but no change was shown; Humboldt r3/r4 were declared stale (outdated plan filename; column moved by design) with no change shown.
 - Caveat: 7 of the 11 open-true rows are lightbulb's, planned work with boxes correctly unticked. They count as true under the board 499 definition (an unticked box naming absent work), which is the definition the PM has to confirm; under a stricter "doc is wrong" reading the figure is 21 / 36 = 58%.
 - This section supersedes the 79-81% Claude-judged figures above.
+
+## Verdict against the 80% bar: both readings (PM relay of CireSnave, 2026-11-24)
+
+TRUE definition (CireSnave 2026-11-24, board 499, verbatim): *"Wouldn't finished plans left unticked be something we want flagged so they can be fixed?"* A flagged row is TRUE when the owner ticks it, deletes it, finishes it or agrees the step is open.
+
+- **Under CireSnave's definition: 32 of 36 = 89%. The 80% bar is met.**
+- **Under the strict reading (the document was wrong): 21 of 36 = 58%. The 80% bar is not met.** This is a narrower question, not the one CireSnave asked.
+- Owner-shown change so far: 10 of 36. Recall is not measured.
+- Shipped as a report to the owning lanes, never a gate. Re-measure 2026-12-02: of the 32 agreed rows, how many documents actually changed.
